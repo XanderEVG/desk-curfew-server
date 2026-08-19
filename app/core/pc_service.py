@@ -18,54 +18,6 @@ logger = logging.getLogger(__name__)
 
 WEEKDAY_NAMES = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
-DEFAULT_DISPLAY_NAMES = {
-    "pc1": "Компьютер 1",
-    "pc2": "Компьютер 2",
-}
-
-DEFAULT_SCHEDULE = (
-    (["mon", "tue", "wed", "thu", "fri"], time(16, 0), time(20, 0)),
-    (["sat", "sun"], time(10, 0), time(21, 0)),
-)
-
-
-async def ensure_default_pcs(session: AsyncSession, settings: Settings) -> None:
-    """
-    Создаёт ПК из DEFAULT_PCS и базовое расписание, если их ещё нет.
-    """
-    pc_names = [name.strip() for name in settings.default_pcs.split(",") if name.strip()]
-
-    for pc_name in pc_names:
-        pc = await get_pc_by_name(session, pc_name)
-
-        if pc is None:
-            pc = PC(
-                name=pc_name,
-                display_name=DEFAULT_DISPLAY_NAMES.get(pc_name, pc_name),
-            )
-            session.add(pc)
-            await session.flush()
-
-        slot_count = await session.scalar(
-            select(func.count())
-            .select_from(ScheduleSlot)
-            .where(ScheduleSlot.pc_id == pc.id)
-        )
-
-        if slot_count == 0:
-            for days, allowed_from, allowed_until in DEFAULT_SCHEDULE:
-                session.add(
-                    ScheduleSlot(
-                        pc_id=pc.id,
-                        days=days,
-                        allowed_from=allowed_from,
-                        allowed_until=allowed_until,
-                        is_active=True,
-                    )
-                )
-
-    await session.commit()
-
 
 async def get_pc_by_name(session: AsyncSession, pc_name: str) -> PC | None:
     return await session.scalar(select(PC).where(PC.name == pc_name))

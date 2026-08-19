@@ -6,10 +6,8 @@ from fastapi import FastAPI
 
 from app.api.routers import control, health, pcs
 from app.config import get_settings
-from app.core import pc_service
 from app.core.mqtt_client import MqttService
 from app.core.scheduler import run_scheduler
-from app.database import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +20,6 @@ async def lifespan(app: FastAPI):
         level=settings.log_level.upper(),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
-
-    async with AsyncSessionLocal() as session:
-        await pc_service.ensure_default_pcs(session, settings)
 
     mqtt_service = MqttService(settings)
     await mqtt_service.start()
@@ -59,6 +54,7 @@ app = FastAPI(
 app.include_router(health.router)
 app.include_router(pcs.router)
 app.include_router(control.router)
+app.include_router(auth.router)
 
 
 @app.get("/")

@@ -35,6 +35,11 @@ class Settings(BaseSettings):
 
     default_pcs: str = "evgeny_pc,andrey_pc"
 
+    # Auth / Sessions
+    secret_key: str = "change_me_to_random_string"
+    session_cookie_name: str = "curfew_session"
+    session_max_age: int = 604800
+
 
 @lru_cache
 def get_settings() -> Settings:

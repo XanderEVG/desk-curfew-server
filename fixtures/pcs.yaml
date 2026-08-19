@@ -1,0 +1,24 @@
+pcs:
+  - name: evgeny_pc
+    display_name: Компьютер Евгения
+    daily_limit_minutes: 120
+    warning_before_lock_seconds: 300
+    schedule:
+      - days: [mon, tue, wed, thu, fri]
+        allowed_from: "16:00"
+        allowed_until: "20:00"
+      - days: [sat, sun]
+        allowed_from: "10:00"
+        allowed_until: "21:00"
+
+  - name: andrey_pc
+    display_name: Компьютер Андрея
+    daily_limit_minutes: 90
+    warning_before_lock_seconds: 300
+    schedule:
+      - days: [mon, tue, wed, thu, fri]
+        allowed_from: "17:00"
+        allowed_until: "19:30"
+      - days: [sat, sun]
+        allowed_from: "10:00"
+        allowed_until: "20:00"

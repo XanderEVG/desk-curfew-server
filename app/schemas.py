@@ -26,6 +26,19 @@ class PCRead(BaseModel):
     last_active_user: str | None
 
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class UserRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str
+    is_active: bool
+    created_at: datetime
+
 class LockRequest(BaseModel):
     reason: str = "manual"
     delay_seconds: int = Field(default=0, ge=0, le=3600)
