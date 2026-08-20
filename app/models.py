@@ -36,6 +36,10 @@ class PC(Base):
     is_online: Mapped[bool] = mapped_column(Boolean, default=False)
     is_locked: Mapped[bool] = mapped_column(Boolean, default=False)
     lock_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    manual_lock_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
     # Желаемое состояние, которое сервер хочет установить
     desired_locked: Mapped[bool] = mapped_column(Boolean, default=False)

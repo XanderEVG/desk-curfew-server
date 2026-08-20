@@ -48,6 +48,15 @@ async def tick(settings: Settings, mqtt_service: MqttService) -> None:
             if not pc.is_online:
                 continue
 
+            if (
+                pc.desired_locked
+                and pc.desired_lock_reason == "manual"
+                and pc.manual_lock_until is not None
+                and now_utc >= pc.manual_lock_until
+            ):
+                logger.info("Manual lock expired for PC %s, unlocking", pc.name)
+                await pc_service.unlock_pc(session, mqtt_service, settings, pc, reason="manual_lock_expired")
+
             usage = await pc_service.get_usage_today(session, settings, pc.id)
             active_seconds = usage.active_seconds if usage else 0
 

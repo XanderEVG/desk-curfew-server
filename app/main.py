@@ -2,7 +2,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager, suppress
 
-from app.api.routers import auth, control, health, pcs
+from app.api.routers import auth, control, health, pcs, stats
 from app.config import get_settings
 from app.core.mqtt_client import MqttService
 from app.core.scheduler import run_scheduler
@@ -53,6 +53,7 @@ app.include_router(health.router)
 app.include_router(pcs.router)
 app.include_router(control.router)
 app.include_router(auth.router)
+app.include_router(stats.router)
 
 
 @app.get("/")

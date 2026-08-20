@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
@@ -58,6 +58,19 @@ async def get_or_create_usage_today(
         await session.flush()
 
     return usage
+
+
+def get_end_of_day(settings: Settings, now_utc: datetime | None = None) -> datetime:
+    """Возвращает конец текущего дня (00:00 следующего дня) в таймзоне сервера, в UTC."""
+    if now_utc is None:
+        now_utc = datetime.now(timezone.utc)
+
+    tz = ZoneInfo(settings.server_timezone)
+    local_now = now_utc.astimezone(tz)
+
+    next_day_start = (local_now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    return next_day_start.astimezone(timezone.utc)
 
 
 async def handle_heartbeat(
@@ -237,6 +250,10 @@ async def lock_pc(
 
     pc.desired_locked = True
     pc.desired_lock_reason = reason
+    if reason == "manual":
+        pc.manual_lock_until = get_end_of_day(settings)
+    else:
+        pc.manual_lock_until = None
 
 
 async def unlock_pc(
@@ -255,6 +272,7 @@ async def unlock_pc(
 
     pc.desired_locked = False
     pc.desired_lock_reason = None
+    pc.manual_lock_until = None
 
 
 async def add_time(
@@ -276,3 +294,132 @@ async def add_time(
 
     if pc.desired_locked:
         await unlock_pc(session, mqtt_service, settings, pc, reason="add_time")
+
+
+async def get_pc_with_usage_today(
+    session: AsyncSession,
+    settings: Settings,
+    pc: PC,
+) -> dict:
+    """Возвращает данные ПК + использование за сегодня (для дашборда)."""
+    usage = await get_usage_today(session, settings, pc.id)
+
+    active_seconds = usage.active_seconds if usage else 0
+    locked_seconds = usage.locked_seconds if usage else 0
+    limit_seconds = pc.daily_limit_minutes * 60
+
+    usage_percent = 0.0
+    if limit_seconds > 0:
+        usage_percent = round((active_seconds / limit_seconds) * 100, 1)
+
+    return {
+        "pc": pc,
+        "usage_today": {
+            "active_seconds": active_seconds,
+            "locked_seconds": locked_seconds,
+            "limit_seconds": limit_seconds,
+            "usage_percent": min(usage_percent, 100.0),
+        },
+    }
+
+
+async def get_usage_period(
+    session: AsyncSession,
+    settings: Settings,
+    pc_id: int,
+    days: int = 7,
+) -> list[UsageDaily]:
+    """Использование за последние N дней."""
+    today = datetime.now(timezone.utc).astimezone(ZoneInfo(settings.server_timezone)).date()
+    since_date = today - timedelta(days=days - 1)
+
+    result = await session.scalars(
+        select(UsageDaily)
+        .where(
+            UsageDaily.pc_id == pc_id,
+            UsageDaily.usage_date >= since_date,
+        )
+        .order_by(UsageDaily.usage_date)
+    )
+    return list(result.all())
+
+
+async def get_pc_events(
+    session: AsyncSession,
+    pc_id: int,
+    limit: int = 50,
+) -> list[PcEvent]:
+    """Последние события от агента."""
+    result = await session.scalars(
+        select(PcEvent).where(PcEvent.pc_id == pc_id).order_by(PcEvent.created_at.desc()).limit(limit)
+    )
+    return list(result.all())
+
+
+async def get_pc_commands(
+    session: AsyncSession,
+    pc_id: int,
+    limit: int = 50,
+) -> list[CommandLog]:
+    """Последние команды, отправленные на ПК."""
+    result = await session.scalars(
+        select(CommandLog).where(CommandLog.pc_id == pc_id).order_by(CommandLog.created_at.desc()).limit(limit)
+    )
+    return list(result.all())
+
+
+async def get_pc_schedule(
+    session: AsyncSession,
+    pc_id: int,
+) -> list[ScheduleSlot]:
+    """Текущее расписание ПК."""
+    result = await session.scalars(select(ScheduleSlot).where(ScheduleSlot.pc_id == pc_id).order_by(ScheduleSlot.id))
+    return list(result.all())
+
+
+async def update_pc_schedule(
+    session: AsyncSession,
+    pc_id: int,
+    slots: list[dict],
+) -> list[ScheduleSlot]:
+    """Полностью заменяет расписание ПК."""
+    # Удаляем старые слоты
+    old_slots = await get_pc_schedule(session, pc_id)
+    for slot in old_slots:
+        await session.delete(slot)
+    await session.flush()
+
+    # Создаём новые
+    new_slots = []
+    for slot_data in slots:
+        slot = ScheduleSlot(
+            pc_id=pc_id,
+            days=slot_data["days"],
+            allowed_from=slot_data["allowed_from"],
+            allowed_until=slot_data["allowed_until"],
+            is_active=slot_data.get("is_active", True),
+        )
+        session.add(slot)
+        new_slots.append(slot)
+
+    await session.flush()
+    return new_slots
+
+
+async def get_stats(session: AsyncSession, settings: Settings) -> dict:
+    """Общая статистика по всем ПК."""
+    result = await session.scalars(select(PC).where(PC.is_active.is_(True)))
+    pcs = result.all()
+
+    total_active_seconds = 0
+    for pc in pcs:
+        usage = await get_usage_today(session, settings, pc.id)
+        if usage:
+            total_active_seconds += usage.active_seconds
+
+    return {
+        "total_pcs": len(pcs),
+        "online_pcs": sum(1 for pc in pcs if pc.is_online),
+        "locked_pcs": sum(1 for pc in pcs if pc.is_locked),
+        "total_active_seconds_today": total_active_seconds,
+    }
