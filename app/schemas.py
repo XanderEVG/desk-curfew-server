@@ -39,6 +39,7 @@ class UserRead(BaseModel):
     is_active: bool
     created_at: datetime
 
+
 class LockRequest(BaseModel):
     reason: str = "manual"
     delay_seconds: int = Field(default=0, ge=0, le=3600)

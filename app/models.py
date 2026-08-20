@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import date, datetime, time
 
 from sqlalchemy import (
@@ -59,7 +61,7 @@ class PC(Base):
         onupdate=func.now(),
     )
 
-    schedule_slots: Mapped[list["ScheduleSlot"]] = relationship(
+    schedule_slots: Mapped[list[ScheduleSlot]] = relationship(
         back_populates="pc",
         cascade="all, delete-orphan",
     )
@@ -88,14 +90,12 @@ class ScheduleSlot(Base):
         server_default=func.now(),
     )
 
-    pc: Mapped["PC"] = relationship(back_populates="schedule_slots")
+    pc: Mapped[PC] = relationship(back_populates="schedule_slots")
 
 
 class UsageDaily(Base):
     __tablename__ = "usage_daily"
-    __table_args__ = (
-        UniqueConstraint("pc_id", "usage_date", name="uq_usage_daily_pc_date"),
-    )
+    __table_args__ = (UniqueConstraint("pc_id", "usage_date", name="uq_usage_daily_pc_date"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
 

@@ -1,26 +1,24 @@
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.core import pc_service
+from app.core.mqtt_client import MqttService
 from app.database import get_db
 from app.deps import get_mqtt_service
 from app.schemas import AddTimeRequest, LockRequest, MessageResponse
-from app.core.auth import get_current_user
 
-router = APIRouter(
-    prefix="/api/pcs",
-    tags=["control"],
-    dependencies=[Depends(get_current_user)],
-)
+router = APIRouter(prefix="/api/pcs", tags=["control"])
 
 
 @router.post("/{pc_name}/lock", response_model=MessageResponse)
 async def lock_pc(
     pc_name: str,
     payload: LockRequest,
-    db: AsyncSession = Depends(get_db),
-    mqtt_service=Depends(get_mqtt_service),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    mqtt_service: Annotated[MqttService, Depends(get_mqtt_service)],
 ):
     settings = get_settings()
 
@@ -45,8 +43,8 @@ async def lock_pc(
 @router.post("/{pc_name}/unlock", response_model=MessageResponse)
 async def unlock_pc(
     pc_name: str,
-    db: AsyncSession = Depends(get_db),
-    mqtt_service=Depends(get_mqtt_service),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    mqtt_service: Annotated[MqttService, Depends(get_mqtt_service)],
 ):
     settings = get_settings()
 
@@ -71,8 +69,8 @@ async def unlock_pc(
 async def add_time(
     pc_name: str,
     payload: AddTimeRequest,
-    db: AsyncSession = Depends(get_db),
-    mqtt_service=Depends(get_mqtt_service),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    mqtt_service: Annotated[MqttService, Depends(get_mqtt_service)],
 ):
     settings = get_settings()
 

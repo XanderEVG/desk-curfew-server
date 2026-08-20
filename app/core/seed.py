@@ -19,7 +19,7 @@ async def seed_pcs(session: AsyncSession) -> None:
         logger.warning("Fixture file not found: %s", pcs_file)
         return
 
-    with open(pcs_file, "r", encoding="utf-8") as f:
+    with open(pcs_file, encoding="utf-8") as f:
         data = yaml.safe_load(f)
 
     for pc_data in data.get("pcs", []):

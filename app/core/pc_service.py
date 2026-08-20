@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, time, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
-from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from zoneinfo import ZoneInfo
 
 from app.config import Settings
 from app.models import PC, CommandLog, PcEvent, ScheduleSlot, UsageDaily
@@ -28,9 +28,7 @@ async def get_usage_today(
     settings: Settings,
     pc_id: int,
 ) -> UsageDaily | None:
-    today = datetime.now(timezone.utc).astimezone(
-        ZoneInfo(settings.server_timezone)
-    ).date()
+    today = datetime.now(UTC).astimezone(ZoneInfo(settings.server_timezone)).date()
 
     return await session.scalar(
         select(UsageDaily).where(
@@ -48,9 +46,7 @@ async def get_or_create_usage_today(
     usage = await get_usage_today(session, settings, pc_id)
 
     if usage is None:
-        today = datetime.now(timezone.utc).astimezone(
-            ZoneInfo(settings.server_timezone)
-        ).date()
+        today = datetime.now(UTC).astimezone(ZoneInfo(settings.server_timezone)).date()
 
         usage = UsageDaily(
             pc_id=pc_id,
@@ -75,7 +71,7 @@ async def handle_heartbeat(
         logger.warning("Heartbeat from unknown PC: %s", pc_name)
         return
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     pc.is_online = True
     pc.last_seen_at = now
@@ -108,7 +104,7 @@ async def handle_status(
         logger.warning("Status from unknown PC: %s", pc_name)
         return
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     pc.is_online = bool(payload.get("online", True))
 
@@ -214,7 +210,7 @@ async def _send_command(
         )
     )
 
-    pc.last_command_at = datetime.now(timezone.utc)
+    pc.last_command_at = datetime.now(UTC)
 
 
 async def lock_pc(

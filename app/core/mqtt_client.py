@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import paho.mqtt.client as mqtt
 
@@ -118,7 +118,7 @@ class MqttService:
         if not topic.startswith(prefix + "/"):
             return
 
-        suffix = topic[len(prefix) + 1:]
+        suffix = topic[len(prefix) + 1 :]
         parts = suffix.split("/")
 
         if len(parts) < 2:
@@ -146,7 +146,7 @@ class MqttService:
     async def _publish_server_status(self, online: bool) -> None:
         payload = {
             "online": online,
-            "ts": datetime.now(timezone.utc).isoformat(),
+            "ts": datetime.now(UTC).isoformat(),
         }
         await self.publish_json(self._server_status_topic(), payload, retain=True)
 

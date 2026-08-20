@@ -22,9 +22,7 @@ def create_user_command(
 
     async def _create() -> None:
         async with AsyncSessionLocal() as session:
-            existing = await session.scalar(
-                select(User).where(User.username == username)
-            )
+            existing = await session.scalar(select(User).where(User.username == username))
             if existing:
                 typer.echo(f"Пользователь '{username}' уже существует")
                 raise typer.Exit(code=1)

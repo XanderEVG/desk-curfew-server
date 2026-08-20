@@ -1,20 +1,41 @@
+import asyncio
+
 import typer
+from sqlalchemy import select
 
-from app.cli.init import init_command
-from app.cli.seed import seed_command
-from app.cli.users import create_user_command
+from app.core.auth import hash_password
+from app.core.seed import seed_pcs
+from app.database import AsyncSessionLocal
+from app.models import User
 
-cli = typer.Typer(
-    name="desk-curfew",
-    help="CLI для desk-curfew-server",
-    no_args_is_help=True,
-)
 
-# Пользователи
-cli.add_command(create_user_command, name="create-user")
+def init_command() -> None:
+    """Полная инициализация: создать админа (если нет) и загрузить фикстуры."""
 
-# Фикстуры
-cli.add_command(seed_command, name="seed")
+    async def _init() -> None:
+        async with AsyncSessionLocal() as session:
+            # Создаём админа, если ещё нет
+            existing = await session.scalar(select(User).where(User.username == "admin"))
 
-# Инициализация
-cli.add_command(init_command, name="init")
+            if existing:
+                typer.echo("Пользователь 'admin' уже существует, пропускаем")
+            else:
+                password = typer.prompt(
+                    "Пароль для admin",
+                    hide_input=True,
+                    confirmation_prompt=True,
+                )
+                user = User(
+                    username="admin",
+                    password_hash=hash_password(password),
+                    is_active=True,
+                )
+                session.add(user)
+                await session.commit()
+                typer.echo("Пользователь 'admin' создан")
+
+            # Загружаем фикстуры
+            await seed_pcs(session)
+            typer.echo("Фикстуры загружены")
+
+    asyncio.run(_init())
