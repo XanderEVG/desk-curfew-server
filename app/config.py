@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -26,6 +27,8 @@ class Settings(BaseSettings):
     mqtt_password: str
     mqtt_topic_prefix: str = "user_cd570e40/curfew/kids"
     mqtt_client_id: str = "desk-curfew-server"
+    mqtt_transport: Literal["tcp", "websockets", "unix"] = "websockets"
+    mqtt_path: str | None = None
     mqtt_keepalive: int = 60
 
     # clusterfly.ru просит не чаще 1 обращения в секунду

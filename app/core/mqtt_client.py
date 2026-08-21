@@ -26,7 +26,11 @@ class MqttService:
         self.client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
             client_id=settings.mqtt_client_id,
+            transport=settings.mqtt_transport,
         )
+
+        if settings.mqtt_path:
+            self.client.ws_set_options(path=settings.mqtt_path)
 
         self.client.username_pw_set(
             settings.mqtt_username,
