@@ -1,4 +1,5 @@
 """Тесты для функций хеширования и проверки паролей."""
+
 from app.core.auth import hash_password, verify_password
 
 
