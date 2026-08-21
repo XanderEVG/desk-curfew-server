@@ -16,9 +16,9 @@ router = APIRouter(prefix="/api/pcs", tags=["control"])
 @router.post("/{pc_name}/lock", response_model=MessageResponse)
 async def lock_pc(
     pc_name: str,
-    payload: LockRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
     mqtt_service: Annotated[MqttService, Depends(get_mqtt_service)],
+    payload: LockRequest | None = None,
 ):
     settings = get_settings()
 
@@ -26,13 +26,16 @@ async def lock_pc(
     if pc is None:
         raise HTTPException(status_code=404, detail="PC not found")
 
+    reason = payload.reason if payload else "manual"
+    delay_seconds = payload.delay_seconds if payload else 0
+
     await pc_service.lock_pc(
         db,
         mqtt_service,
         settings,
         pc,
-        reason=payload.reason,
-        delay_seconds=payload.delay_seconds,
+        reason=reason,
+        delay_seconds=delay_seconds,
     )
 
     await db.commit()
@@ -68,9 +71,9 @@ async def unlock_pc(
 @router.post("/{pc_name}/add-time", response_model=MessageResponse)
 async def add_time(
     pc_name: str,
-    payload: AddTimeRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
     mqtt_service: Annotated[MqttService, Depends(get_mqtt_service)],
+    payload: AddTimeRequest | None = None,
 ):
     settings = get_settings()
 
@@ -83,7 +86,7 @@ async def add_time(
         mqtt_service,
         settings,
         pc,
-        minutes=payload.minutes,
+        minutes=payload.minutes if payload else 10,
     )
 
     await db.commit()

@@ -113,6 +113,13 @@ class MqttService:
 
     async def _handle_message(self, topic: str, payload_bytes: bytes) -> None:
         try:
+            payload_preview = payload_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            payload_preview = repr(payload_bytes)
+
+        logger.debug("MQTT <<< %s: %s", topic, payload_preview)
+
+        try:
             payload = json.loads(payload_bytes.decode("utf-8"))
         except Exception:
             logger.warning("Invalid JSON payload from topic %s", topic)
@@ -130,6 +137,21 @@ class MqttService:
 
         pc_name = parts[0]
         kind = parts[1]
+
+        if pc_name == "server":
+            # Служебные топики самого сервера
+            if kind == "cmd":
+                async with AsyncSessionLocal() as session:
+                    try:
+                        await pc_service.handle_server_command(session, self.settings, payload)
+                        await session.commit()
+                    except Exception:
+                        await session.rollback()
+                        logger.exception("Failed to handle server command")
+            else:
+                # status/hb/event от сервера — это наши же retained, игнорируем
+                logger.debug("Ignoring server's own %s message", kind)
+            return
 
         async with AsyncSessionLocal() as session:
             try:
@@ -164,6 +186,8 @@ class MqttService:
         """
         Публикация с учётом rate limit для брокера
         """
+        logger.debug("MQTT >>> %s: %s", topic, json.dumps(payload, ensure_ascii=False))
+
         async with self._publish_lock:
             now = time.monotonic()
             wait = self.settings.mqtt_publish_delay - (now - self._last_publish)

@@ -19,14 +19,15 @@ async def lifespan(app: CurfewApp):
         level=settings.log_level.upper(),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
+    logging.getLogger("app.core.mqtt_client").setLevel(logging.DEBUG)
 
     mqtt_service = MqttService(settings)
     await mqtt_service.start()
 
     scheduler_task = asyncio.create_task(run_scheduler(settings, mqtt_service))
 
-    app.state.mqtt = mqtt_service
-    app.state.settings = settings
+    app.mqtt = mqtt_service
+    app.settings = settings
 
     logger.info("desk-curfew-server started")
 
