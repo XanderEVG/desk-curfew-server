@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, time
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     Date,
     DateTime,
@@ -17,6 +18,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+JSONB_VARIANT = JSON().with_variant(JSONB(), "postgresql")
 
 
 class PC(Base):
@@ -82,7 +85,7 @@ class ScheduleSlot(Base):
     )
 
     # Пример: ["mon", "tue", "wed", "thu", "fri"]
-    days: Mapped[list] = mapped_column(JSONB, default=list)
+    days: Mapped[list] = mapped_column(JSONB_VARIANT, default=list)
 
     allowed_from: Mapped[time] = mapped_column(Time)
     allowed_until: Mapped[time] = mapped_column(Time)
@@ -131,7 +134,7 @@ class PcEvent(Base):
     )
 
     event_type: Mapped[str] = mapped_column(String(64), index=True)
-    payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    payload: Mapped[dict | None] = mapped_column(JSONB_VARIANT, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -150,7 +153,7 @@ class CommandLog(Base):
     )
 
     action: Mapped[str] = mapped_column(String(64), index=True)
-    payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    payload: Mapped[dict | None] = mapped_column(JSONB_VARIANT, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
