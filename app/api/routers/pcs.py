@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.core import pc_service
+from app.core.auth import get_current_user
 from app.database import get_db
 from app.models import PC
 from app.schemas import (
@@ -19,7 +20,8 @@ from app.schemas import (
     UsageDayRead,
 )
 
-router = APIRouter(prefix="/api/pcs", tags=["pcs"])
+# Все эндпоинты требуют авторизации
+router = APIRouter(prefix="/api/pcs", tags=["pcs"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("", response_model=list[PCWithUsage])

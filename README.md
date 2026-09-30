@@ -120,3 +120,10 @@ MIT
       и прошло > 120 сек с последней команды:
          └─ Повторно отправить lock_now
 ```
+
+# Тесты
+
+```
+docker compose --profile test up -d test-db
+pytest tests/integration/ -v
+```
