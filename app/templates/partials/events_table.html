@@ -1,0 +1,21 @@
+<div id="events-box">
+  <table>
+    <tr><th>Время</th><th>Событие</th><th>Причина</th></tr>
+    {% for e in rows %}
+    <tr>
+      <td>{{ e.created_at | fmt_dt }}</td>
+      <td>{{ e.event_type }}</td>
+      <td>{{ e.payload.reason if e.payload and e.payload.reason else '' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="3" class="muted">Пока пусто — агенты ещё не подключались.</td></tr>
+    {% endfor %}
+  </table>
+  {% if has_more %}
+  <button class="secondary"
+          hx-get="/web/pcs/{{ pc.name }}/partials/events?offset={{ offset + limit }}&limit={{ limit }}"
+          hx-target="#events-box" hx-swap="innerHTML">
+    Показать ещё
+  </button>
+  {% endif %}
+</div>

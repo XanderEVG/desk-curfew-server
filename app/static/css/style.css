@@ -171,3 +171,142 @@ body {
   font-size: 0.8rem;
   white-space: nowrap;
 }
+
+.bonus {
+  margin-left: 0.25rem;
+  font-size: 0.8em;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+/* === Страница ПК === */
+section {
+  margin-top: 1.75rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.75rem;
+}
+
+.day-limits {
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+}
+
+.chart {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+  height: 140px;
+  margin-top: 0.75rem;
+}
+.chart-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.25rem;
+  height: 100%;
+}
+.chart-bar {
+  width: 100%;
+  max-width: 48px;
+  min-height: 2px;
+  background: #2fa664;
+  border-radius: 0.25rem 0.25rem 0 0;
+}
+.chart-label {
+  font-size: 0.7rem;
+  color: var(--pico-muted-color);
+}
+
+.slot-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+}
+.slot-days {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.slot-row label.day {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.8rem;
+}
+.slot-row input[type="time"] {
+  width: auto;
+  padding: 0.25rem 0.4rem;
+  font-size: 0.85rem;
+}
+.slot-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+form h6 {
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.day-limits {
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  margin-top: 0.25rem;
+}
+
+.slot-row label.time {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+}
+
+.slot-row input[type="time"] {
+  width: 5.2rem;
+  height: 2.4rem;
+  margin: 0;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.9rem;
+}
+
+
+/* === Тосты === */
+#toasts {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  z-index: 100;
+}
+.toast {
+  padding: 0.6rem 1rem;
+  border-radius: 0.5rem;
+  background: #1e7e34;
+  color: #fff;
+  font-size: 0.85rem;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 20%);
+  animation: toast-in 0.25s ease;
+}
+.toast.error { background: #c62828; }
+.toast.info  { background: #37474f; }
+.toast.fade-out { opacity: 0; transition: opacity 0.4s; }
+@keyframes toast-in {
+  from { transform: translateY(0.5rem); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+
+/* === Сворачиваемые секции === */
+details { margin-top: 0.5rem; }
+summary { cursor: pointer; font-weight: 600; }
+#events-box button,
+#commands-box button { margin-top: 0.5rem; }

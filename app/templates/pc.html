@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}{{ pc.display_name }} — desk-curfew{% endblock %}
+{% block content %}
+<h3>
+  {{ pc.display_name }}
+  <span class="badge {% if pc.is_online %}online{% else %}offline{% endif %}">
+    {{ 'Онлайн' if pc.is_online else 'Оффлайн' }}
+  </span>
+  {% if pc.is_locked %}<span class="badge locked">Заблокирован</span>{% endif %}
+  {% if pc.desired_locked and not pc.is_locked %}
+  <span class="badge pending">Ожидает блокировки</span>
+  {% endif %}
+</h3>
+<p class="muted">{{ pc.name }}</p>
+
+<section>
+  <h5>Сегодня</h5>
+  <p>
+    {{ usage.active_seconds | fmt_duration }} из {{ usage.limit_seconds | fmt_duration }}
+    ({{ usage.usage_percent | round(0) | int }}%)
+    {% if usage.bonus_seconds %} <small class="bonus">(+{{ usage.bonus_seconds | fmt_duration }})</small>{% endif %}
+    <br>В блокировке: {{ usage.locked_seconds | fmt_duration }}
+  </p>
+  <div class="chart">
+    {% for day in chart %}
+    <div class="chart-col">
+      <div class="chart-bar" style="height: {{ day.percent }}%"
+           title="{{ day.label }}: {{ day.seconds | fmt_duration }}"></div>
+      <span class="chart-label">{{ day.label }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section>
+  <h5>Настройки</h5>
+  <form method="post" action="/web/pcs/{{ pc.name }}/settings">
+    <div class="grid">
+      <label>Отображаемое имя
+        <input type="text" name="display_name" value="{{ pc.display_name }}" required>
+      </label>
+      <label>Лимит по умолчанию, мин/день
+        <input type="number" name="daily_limit_minutes" value="{{ pc.daily_limit_minutes }}" min="0" max="1440">
+      </label>
+      <label>Предупреждение за, сек
+        <input type="number" name="warning_before_lock_seconds"
+               value="{{ pc.warning_before_lock_seconds }}" min="0" max="3600">
+      </label>
+    </div>
+    <label>
+      <input type="checkbox" name="is_active" {% if pc.is_active %}checked{% endif %}>
+      ПК активен (управляется сервером)
+    </label>
+
+    <h6>Лимиты по дням недели (пусто = лимит по умолчанию)</h6>
+    <div class="grid day-limits">
+      {% for wd, label in days_of_week %}
+      <label>{{ label }}
+        <input type="number" name="limit_{{ wd }}" min="0" max="1440"
+               value="{{ pc.day_limits.get(wd, '') if pc.day_limits else '' }}"
+               placeholder="{{ pc.daily_limit_minutes }}">
+      </label>
+      {% endfor %}
+    </div>
+    <button type="submit">Сохранить</button>
+  </form>
+</section>
+
+<section>
+  <h5>Расписание</h5>
+  <div id="schedule-editor" data-pc="{{ pc.name }}">
+    {% for slot in schedule %}
+    <div class="slot-row">
+      <div class="slot-days">
+        {% for wd, label in days_of_week %}
+        <label class="day">
+          <input type="checkbox" class="slot-day" value="{{ wd }}" {% if wd in slot.days %}checked{% endif %}>
+          {{ label }}
+        </label>
+        {% endfor %}
+      </div>
+      <label class="time">с <input type="time" class="slot-from" value="{{ slot.allowed_from.strftime('%H:%M') }}"></label>
+      <label class="time">по <input type="time" class="slot-until" value="{{ slot.allowed_until.strftime('%H:%M') }}"></label>
+      <label class="day">
+        <input type="checkbox" class="slot-active" {% if slot.is_active %}checked{% endif %}>Активен
+      </label>
+      <button type="button" class="secondary slot-remove">✕</button>
+    </div>
+    {% else %}
+    <p class="muted">Слотов нет — время разрешено всегда.</p>
+    {% endfor %}
+    <div class="slot-actions">
+      <button type="button" class="secondary" id="add-slot">+ Слот</button>
+      <button type="button" id="save-schedule">Сохранить расписание</button>
+    </div>
+  </div>
+</section>
+
+<section>
+  <details>
+    <summary>События агента</summary>
+    {% set rows = events_ctx.rows %}
+    {% set offset = events_ctx.offset %}
+    {% set limit = events_ctx.limit %}
+    {% set has_more = events_ctx.has_more %}
+    {% include "partials/events_table.html" %}
+  </details>
+</section>
+
+<section>
+  <details>
+    <summary>Команды</summary>
+    {% set rows = commands_ctx.rows %}
+    {% set offset = commands_ctx.offset %}
+    {% set limit = commands_ctx.limit %}
+    {% set has_more = commands_ctx.has_more %}
+    {% include "partials/commands_table.html" %}
+  </details>
+</section>
+{% endblock %}

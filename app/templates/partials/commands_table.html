@@ -1,0 +1,25 @@
+<div id="commands-box">
+  <table>
+    <tr><th>Время</th><th>Команда</th><th>Параметры</th></tr>
+    {% for c in rows %}
+    <tr>
+      <td>{{ c.created_at | fmt_dt }}</td>
+      <td>{{ c.action }}</td>
+      <td>
+        {% if c.payload.minutes %}+{{ c.payload.minutes }} мин{% endif %}
+        {% if c.payload.delay_seconds %}через {{ c.payload.delay_seconds }} с{% endif %}
+        {% if c.payload.reason %}· {{ c.payload.reason }}{% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="3" class="muted">Команд ещё не было.</td></tr>
+    {% endfor %}
+  </table>
+  {% if has_more %}
+  <button class="secondary"
+          hx-get="/web/pcs/{{ pc.name }}/partials/commands?offset={{ offset + limit }}&limit={{ limit }}"
+          hx-target="#commands-box" hx-swap="innerHTML">
+    Показать ещё
+  </button>
+  {% endif %}
+</div>
