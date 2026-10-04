@@ -434,3 +434,85 @@ class TestAddTime:
         assert pc.desired_locked is False
         actions = [c[0][1]["action"] for c in mqtt_mock.send_pc_command.call_args_list]
         assert actions == ["add_time", "unlock"]
+
+class TestServerCommands:
+    """Управление сервером через server/cmd."""
+
+    @pytest.mark.asyncio()
+    async def test_server_lock_command(self, settings, db_session, mocker):
+        pc = await create_test_pc(db_session, name="srv_lock_pc")
+        mqtt_mock = mocker.AsyncMock()
+
+        await pc_service.handle_server_command(
+            db_session, mqtt_mock, settings, {"action": "lock", "pc": "srv_lock_pc"}
+        )
+
+        assert pc.desired_locked is True
+        assert mqtt_mock.send_pc_command.call_count == 1
+        assert mqtt_mock.send_pc_command.call_args[0][1]["action"] == "lock_now"
+
+    @pytest.mark.asyncio()
+    async def test_server_unlock_command(self, settings, db_session, mocker):
+        pc = await create_test_pc(db_session, name="srv_unlock_pc")
+        pc.desired_locked = True
+        pc.desired_lock_reason = "manual"
+        await db_session.commit()
+        mqtt_mock = mocker.AsyncMock()
+
+        await pc_service.handle_server_command(
+            db_session, mqtt_mock, settings, {"action": "unlock", "pc": "srv_unlock_pc"}
+        )
+
+        assert pc.desired_locked is False
+        assert mqtt_mock.send_pc_command.call_args[0][1]["action"] == "unlock"
+
+    @pytest.mark.asyncio()
+    async def test_server_add_time_command(self, settings, db_session, mocker):
+        pc = await create_test_pc(db_session, name="srv_time_pc")
+        mqtt_mock = mocker.AsyncMock()
+
+        await pc_service.handle_server_command(
+            db_session, mqtt_mock, settings,
+            {"action": "add_time", "pc": "srv_time_pc", "minutes": 10},
+        )
+
+        cmd = mqtt_mock.send_pc_command.call_args[0][1]
+        assert cmd == {"action": "add_time", "minutes": 10}
+
+    @pytest.mark.asyncio()
+    async def test_server_command_unknown_pc(self, settings, db_session, mocker):
+        mqtt_mock = mocker.AsyncMock()
+        # Не падает, просто warning
+        await pc_service.handle_server_command(
+            db_session, mqtt_mock, settings, {"action": "lock", "pc": "nope"}
+        )
+        mqtt_mock.send_pc_command.assert_not_called()
+
+    @pytest.mark.asyncio()
+    async def test_server_command_unknown_action(self, settings, db_session, mocker):
+        pc = await create_test_pc(db_session, name="srv_bad_action_pc")
+        mqtt_mock = mocker.AsyncMock()
+
+        await pc_service.handle_server_command(
+            db_session, mqtt_mock, settings, {"action": "reboot", "pc": pc.name}
+        )
+        mqtt_mock.send_pc_command.assert_not_called()
+
+
+class TestBuildServerStatus:
+    """Статус сервера для внешних приложений."""
+
+    @pytest.mark.asyncio()
+    async def test_status_contains_pc_summary(self, settings, db_session):
+        pc = await create_test_pc(db_session, name="status_pc")
+
+        status = await pc_service.build_server_status(db_session, settings)
+
+        assert status["online"] is True
+        assert "status_pc" in status["pcs"]
+        entry = status["pcs"]["status_pc"]
+        assert entry["is_online"] is False
+        assert entry["active_seconds"] == 0
+        assert entry["bonus_seconds"] == 0
+        # лимит по умолчанию 120 мин → 7200 сек
+        assert entry["limit_seconds"] == 7200

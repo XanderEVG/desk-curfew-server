@@ -64,3 +64,40 @@
 - `bonus_seconds` (подаренное время) сгорает в 00:00 и НЕ снимает
   блокировки по расписанию и ручные — только по лимиту.
 - Лимит может отличаться по дням недели (`day_limits` у ПК).
+
+## Управление сервером (`server/cmd`)
+
+Внешние приложения управляют сервером, публикуя JSON в `server/cmd`:
+
+{"action": "lock", "pc": "evgeny_pc", "reason": "manual", "delay_seconds": 0}
+{"action": "unlock", "pc": "evgeny_pc"}
+{"action": "add_time", "pc": "evgeny_pc", "minutes": 30}
+
+- `lock` — аналог кнопки «Заблокировать» (reason/delay_seconds опциональны).
+- `unlock` — разблокировка.
+- `add_time` — бонусное время; НЕ снимает schedule/manual-блокировки.
+- Неизвестный ПК или action → warning в лог, действие не выполняется.
+
+## Статус сервера (`server/status`, retained, обновление каждые 60 с)
+
+{
+  "online": true,
+  "ts": "2026-10-05T12:00:00+00:00",
+  "pcs": {
+    "evgeny_pc": {
+      "display_name": "Компьютер Евгения",
+      "is_online": true,
+      "is_locked": false,
+      "lock_reason": null,
+      "desired_locked": false,
+      "desired_lock_reason": null,
+      "manual_lock_until": null,
+      "last_seen_at": "2026-10-05T11:59:30+00:00",
+      "last_active_user": "kid1",
+      "active_seconds": 3600,
+      "locked_seconds": 0,
+      "bonus_seconds": 1800,
+      "limit_seconds": 9000
+    }
+  }
+}

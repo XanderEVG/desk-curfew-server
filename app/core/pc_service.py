@@ -169,17 +169,91 @@ async def handle_event(
         pc.lock_reason = None
 
 
+def _clamp_int(value: Any, default: int, minimum: int, maximum: int) -> int:
+    """Безопасный int из payload с ограничением диапазона."""
+    try:
+        return max(minimum, min(int(value), maximum))
+    except (TypeError, ValueError):
+        return default
+
+
 async def handle_server_command(
     session: AsyncSession,
+    mqtt_service: MqttService,
     settings: Settings,
     payload: dict[str, Any],
 ) -> None:
+    """Выполняет команды внешнего управления из топика server/cmd.
+
+    Формат:
+        {"action": "lock", "pc": "evgeny_pc", "reason": "manual", "delay_seconds": 0}
+        {"action": "unlock", "pc": "evgeny_pc"}
+        {"action": "add_time", "pc": "evgeny_pc", "minutes": 30}
     """
-    Сюда будут приходить команды вида:
-    {"action": "lock", "pc": "evgeny_pc"}
-    {"action": "set_config", ...}
-    """
-    logger.info("Server command received: %s", payload)
+    action = str(payload.get("action", ""))
+    pc_name = str(payload.get("pc", ""))
+
+    pc = await get_pc_by_name(session, pc_name) if pc_name else None
+    if pc is None:
+        logger.warning("Server command for unknown PC: %r (payload=%s)", pc_name, payload)
+        return
+
+    if action == "lock":
+        await lock_pc(
+            session,
+            mqtt_service,
+            settings,
+            pc,
+            reason=str(payload.get("reason", "manual")),
+            delay_seconds=_clamp_int(payload.get("delay_seconds"), 0, 0, 3600),
+        )
+    elif action == "unlock":
+        await unlock_pc(session, mqtt_service, settings, pc, reason="manual")
+    elif action == "add_time":
+        minutes = _clamp_int(payload.get("minutes"), 30, 1, 600)
+        await add_time(session, mqtt_service, settings, pc, minutes=minutes)
+    else:
+        logger.warning("Unknown server command action: %r", action)
+        return
+
+    logger.info("Server command executed: %s", payload)
+
+
+async def build_server_status(session: AsyncSession, settings: Settings) -> dict:
+    """Retained-статус сервера с актуальной сводкой по всем ПК."""
+    result = await session.scalars(select(PC).where(PC.is_active.is_(True)).order_by(PC.id))
+    pcs = result.all()
+
+    local_now = datetime.now(UTC).astimezone(ZoneInfo(settings.server_timezone))
+    weekday = WEEKDAY_NAMES[local_now.weekday()]
+
+    status: dict[str, Any] = {
+        "online": True,
+        "ts": datetime.now(UTC).isoformat(),
+        "pcs": {},
+    }
+    for pc in pcs:
+        usage = await get_usage_today(session, settings, pc.id)
+        bonus_seconds = usage.bonus_seconds if usage else 0
+        limit_minutes = get_limit_minutes_for_day(pc, weekday)
+
+        status["pcs"][pc.name] = {
+            "display_name": pc.display_name,
+            "is_online": pc.is_online,
+            "is_locked": pc.is_locked,
+            "lock_reason": pc.lock_reason,
+            "desired_locked": pc.desired_locked,
+            "desired_lock_reason": pc.desired_lock_reason,
+            "manual_lock_until": pc.manual_lock_until.isoformat() if pc.manual_lock_until else None,
+            "last_seen_at": pc.last_seen_at.isoformat() if pc.last_seen_at else None,
+            "last_active_user": pc.last_active_user,
+            "active_seconds": usage.active_seconds if usage else 0,
+            "locked_seconds": usage.locked_seconds if usage else 0,
+            "bonus_seconds": bonus_seconds,
+            # лимит на сегодня с учётом дня недели и бонуса
+            "limit_seconds": limit_minutes * 60 + bonus_seconds,
+        }
+    return status
 
 
 async def is_allowed_now(

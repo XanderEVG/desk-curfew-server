@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import time
+from contextlib import suppress
 from datetime import UTC, datetime
 
 import paho.mqtt.client as mqtt
@@ -19,34 +20,28 @@ class MqttService:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.loop: asyncio.AbstractEventLoop | None = None
-
         self._publish_lock = asyncio.Lock()
         self._last_publish = 0.0
-
+        self._status_task: asyncio.Task | None = None
         self.client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
             client_id=settings.mqtt_client_id,
             transport=settings.mqtt_transport,
         )
-
         if settings.mqtt_path:
             self.client.ws_set_options(path=settings.mqtt_path)
-
         self.client.username_pw_set(
             settings.mqtt_username,
             settings.mqtt_password,
         )
-
         if settings.mqtt_use_ssl:
             self.client.tls_set()
-
         self.client.will_set(
             self._server_status_topic(),
             json.dumps({"online": False}),
             qos=1,
             retain=True,
         )
-
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
         self.client.on_disconnect = self._on_disconnect
@@ -62,6 +57,7 @@ class MqttService:
             keepalive=self.settings.mqtt_keepalive,
         )
         self.client.loop_start()
+        self._status_task = asyncio.create_task(self._status_loop())
         logger.info(
             "MQTT client started: %s:%s",
             self.settings.mqtt_host,
@@ -69,14 +65,28 @@ class MqttService:
         )
 
     async def stop(self) -> None:
+        if self._status_task is not None:
+            self._status_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._status_task
+            self._status_task = None
         try:
             await self._publish_server_status(False)
         except Exception:
             logger.exception("Failed to publish offline status")
-
         self.client.loop_stop()
         self.client.disconnect()
         logger.info("MQTT client stopped")
+
+    async def _status_loop(self) -> None:
+        """Раз в 60 сек обновляет retained-статус, чтобы внешние
+        приложения видели актуальную сводку по ПК."""
+        while True:
+            await asyncio.sleep(60)
+            try:
+                await self._publish_server_status(True)
+            except Exception:
+                logger.exception("Failed to refresh server status")
 
     def _schedule_coroutine(self, coro) -> None:
         if self.loop is not None:
@@ -86,20 +96,16 @@ class MqttService:
         if reason_code.is_failure:
             logger.error("MQTT connection failed: %s", reason_code)
             return
-
         prefix = self.settings.mqtt_topic_prefix
-
         subscriptions = (
             f"{prefix}/+/hb",
             f"{prefix}/+/status",
             f"{prefix}/+/event",
             f"{prefix}/server/cmd",
         )
-
         for topic in subscriptions:
             client.subscribe(topic, qos=1)
             logger.info("Subscribed to %s", topic)
-
         self._schedule_coroutine(self._publish_server_status(True))
 
     def _on_disconnect(self, client, userdata, flags, reason_code, properties) -> None:
@@ -108,7 +114,6 @@ class MqttService:
     def _on_message(self, client, userdata, msg) -> None:
         if self.loop is None:
             return
-
         self._schedule_coroutine(self._handle_message(msg.topic, msg.payload))
 
     async def _handle_message(self, topic: str, payload_bytes: bytes) -> None:
@@ -116,7 +121,6 @@ class MqttService:
             payload_preview = payload_bytes.decode("utf-8")
         except UnicodeDecodeError:
             payload_preview = repr(payload_bytes)
-
         logger.debug("MQTT <<< %s: %s", topic, payload_preview)
 
         try:
@@ -131,7 +135,6 @@ class MqttService:
 
         suffix = topic[len(prefix) + 1 :]
         parts = suffix.split("/")
-
         if len(parts) < 2:
             return
 
@@ -143,7 +146,7 @@ class MqttService:
             if kind == "cmd":
                 async with AsyncSessionLocal() as session:
                     try:
-                        await pc_service.handle_server_command(session, self.settings, payload)
+                        await pc_service.handle_server_command(session, self, self.settings, payload)
                         await session.commit()
                     except Exception:
                         await session.rollback()
@@ -155,25 +158,23 @@ class MqttService:
 
         async with AsyncSessionLocal() as session:
             try:
-                if pc_name == "server" and kind == "cmd":
-                    await pc_service.handle_server_command(session, self.settings, payload)
-                elif kind == "hb":
+                if kind == "hb":
                     await pc_service.handle_heartbeat(session, self.settings, pc_name, payload)
                 elif kind == "status":
                     await pc_service.handle_status(session, pc_name, payload)
                 elif kind == "event":
                     await pc_service.handle_event(session, pc_name, payload)
-
                 await session.commit()
             except Exception:
                 await session.rollback()
                 logger.exception("Failed to handle MQTT message from %s", topic)
 
-    async def _publish_server_status(self, online: bool) -> None:
-        payload = {
-            "online": online,
-            "ts": datetime.now(UTC).isoformat(),
-        }
+    async def _publish_server_status(self, online: bool = True) -> None:
+        if online:
+            async with AsyncSessionLocal() as session:
+                payload = await pc_service.build_server_status(session, self.settings)
+        else:
+            payload = {"online": False, "ts": datetime.now(UTC).isoformat()}
         await self.publish_json(self._server_status_topic(), payload, retain=True)
 
     async def publish_json(
@@ -183,20 +184,14 @@ class MqttService:
         qos: int = 1,
         retain: bool = False,
     ) -> None:
-        """
-        Публикация с учётом rate limit для брокера
-        """
+        """Публикация с учётом rate limit для брокера."""
         logger.debug("MQTT >>> %s: %s", topic, json.dumps(payload, ensure_ascii=False))
-
         async with self._publish_lock:
             now = time.monotonic()
             wait = self.settings.mqtt_publish_delay - (now - self._last_publish)
-
             if wait > 0:
                 await asyncio.sleep(wait)
-
             message = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-
             await asyncio.to_thread(
                 self.client.publish,
                 topic,
@@ -204,7 +199,6 @@ class MqttService:
                 qos=qos,
                 retain=retain,
             )
-
             self._last_publish = time.monotonic()
 
     async def send_pc_command(self, pc_name: str, command: dict) -> None:
