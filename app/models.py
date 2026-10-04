@@ -13,6 +13,7 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -31,6 +32,12 @@ class PC(Base):
     display_name: Mapped[str] = mapped_column(String(128))
 
     daily_limit_minutes: Mapped[int] = mapped_column(Integer, default=120)
+    day_limits: Mapped[dict] = mapped_column(
+        JSONB_VARIANT,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'"),
+    )
     warning_before_lock_seconds: Mapped[int] = mapped_column(Integer, default=300)
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -115,6 +122,13 @@ class UsageDaily(Base):
 
     active_seconds: Mapped[int] = mapped_column(Integer, default=0)
     locked_seconds: Mapped[int] = mapped_column(Integer, default=0)
+
+    bonus_seconds: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
 
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

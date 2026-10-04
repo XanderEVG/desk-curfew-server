@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
-from zoneinfo import ZoneInfo
 
 from app.config import Settings
 from app.core import pc_service
@@ -79,8 +79,12 @@ async def process_pc(
 
     usage = await pc_service.get_usage_today(session, settings, pc.id)
     active_seconds = usage.active_seconds if usage else 0
+    bonus_seconds = usage.bonus_seconds if usage else 0
 
-    over_limit = pc.daily_limit_minutes > 0 and active_seconds >= pc.daily_limit_minutes * 60
+    weekday = pc_service.WEEKDAY_NAMES[local_now.weekday()]
+    limit_minutes = pc_service.get_limit_minutes_for_day(pc, weekday)
+
+    over_limit = limit_minutes > 0 and active_seconds >= limit_minutes * 60 + bonus_seconds
 
     allowed = await pc_service.is_allowed_now(session, settings, pc.id, local_now)
 

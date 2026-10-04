@@ -1,0 +1,16 @@
+<div class="stats-row">
+  <span>Всего ПК: <strong>{{ stats.total }}</strong></span>
+  <span>Онлайн: <strong>{{ stats.online }}</strong></span>
+  <span>Заблокировано: <strong>{{ stats.locked }}</strong></span>
+  <span>Активно сегодня: <strong>{{ stats.active_today | fmt_duration }}</strong></span>
+</div>
+
+<div class="cards">
+  {% for item in items %}
+    {% set pc = item.pc %}
+    {% set usage = item.usage_today %}
+    {% include "partials/pc_card.html" %}
+  {% else %}
+  <p>Нет подключённых ПК. Загрузите фикстуры: <code>python -m app.cli seed</code></p>
+  {% endfor %}
+</div>

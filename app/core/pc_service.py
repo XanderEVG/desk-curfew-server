@@ -3,10 +3,10 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from zoneinfo import ZoneInfo
 
 from app.config import Settings
 from app.models import PC, CommandLog, PcEvent, ScheduleSlot, UsageDaily
@@ -71,6 +71,13 @@ def get_end_of_day(settings: Settings, now_utc: datetime | None = None) -> datet
     next_day_start = (local_now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
 
     return next_day_start.astimezone(timezone.utc)
+
+
+def get_limit_minutes_for_day(pc: PC, weekday: str) -> int:
+    """Лимит минут для дня недели; фолбэк — daily_limit_minutes."""
+    limits = pc.day_limits or {}
+    value = limits.get(weekday)
+    return int(value) if value is not None else pc.daily_limit_minutes
 
 
 async def handle_heartbeat(
@@ -282,18 +289,23 @@ async def add_time(
     pc: PC,
     minutes: int,
 ) -> None:
+    """Добавляет бонусное время на сегодня, не трогая честную историю."""
     command = {
         "action": "add_time",
         "minutes": minutes,
     }
-
     await _send_command(session, mqtt_service, pc, command)
 
     usage = await get_or_create_usage_today(session, settings, pc.id)
-    usage.active_seconds = max(0, usage.active_seconds - minutes * 60)
+    usage.bonus_seconds += minutes * 60
 
-    if pc.desired_locked:
-        await unlock_pc(session, mqtt_service, settings, pc, reason="add_time")
+    # Разблокируем ТОЛЬКО если блокировка была по лимиту
+    # и с бонусом лимит больше не превышен.
+    if pc.desired_locked and pc.desired_lock_reason == "daily_limit":
+        weekday = WEEKDAY_NAMES[datetime.now(UTC).astimezone(ZoneInfo(settings.server_timezone)).weekday()]
+        limit_seconds = get_limit_minutes_for_day(pc, weekday) * 60 + usage.bonus_seconds
+        if usage.active_seconds < limit_seconds:
+            await unlock_pc(session, mqtt_service, settings, pc, reason="add_time")
 
 
 async def get_pc_with_usage_today(
@@ -303,10 +315,12 @@ async def get_pc_with_usage_today(
 ) -> dict:
     """Возвращает данные ПК + использование за сегодня (для дашборда)."""
     usage = await get_usage_today(session, settings, pc.id)
-
     active_seconds = usage.active_seconds if usage else 0
     locked_seconds = usage.locked_seconds if usage else 0
-    limit_seconds = pc.daily_limit_minutes * 60
+    bonus_seconds = usage.bonus_seconds if usage else 0
+
+    weekday = WEEKDAY_NAMES[datetime.now(UTC).astimezone(ZoneInfo(settings.server_timezone)).weekday()]
+    limit_seconds = get_limit_minutes_for_day(pc, weekday) * 60 + bonus_seconds
 
     usage_percent = 0.0
     if limit_seconds > 0:
@@ -317,6 +331,7 @@ async def get_pc_with_usage_today(
         "usage_today": {
             "active_seconds": active_seconds,
             "locked_seconds": locked_seconds,
+            "bonus_seconds": bonus_seconds,
             "limit_seconds": limit_seconds,
             "usage_percent": min(usage_percent, 100.0),
         },

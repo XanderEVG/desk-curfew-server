@@ -1,5 +1,4 @@
 """Тесты для бизнес-логики управления ПК."""
-
 from datetime import datetime, time, timezone
 
 import pytest
@@ -8,6 +7,76 @@ from zoneinfo import ZoneInfo
 
 from app.core import pc_service
 from app.core.pc_service import get_end_of_day, is_allowed_now
+from app.models import PC, ScheduleSlot, UsageDaily
+
+
+def _today(settings):
+    """Реальная сегодняшняя дата в таймзоне сервера."""
+    return datetime.now(timezone.utc).astimezone(ZoneInfo(settings.server_timezone)).date()
+
+
+async def create_test_pc(session, name="test_pc"):
+    """Создаёт тестовый ПК."""
+    pc = PC(name=name, display_name=name, daily_limit_minutes=120)
+    session.add(pc)
+    await session.commit()
+    return pc
+
+
+async def create_test_pc_with_schedule(
+    session,
+    days: list[str],
+    allowed_from: time,
+    allowed_until: time,
+    is_active: bool = True,
+) -> int:
+    """Создаёт тестовый ПК с одним слотом расписания."""
+    pc = PC(
+        name="test_pc",
+        display_name="Test PC",
+        daily_limit_minutes=120,
+    )
+    session.add(pc)
+    await session.flush()
+
+    slot = ScheduleSlot(
+        pc_id=pc.id,
+        days=days,
+        allowed_from=allowed_from,
+        allowed_until=allowed_until,
+        is_active=is_active,
+    )
+    session.add(slot)
+    await session.commit()
+
+    return pc.id
+
+
+async def create_test_pc_with_multiple_slots(
+    session,
+    slots: list[tuple[list[str], time, time]],
+) -> int:
+    """Создаёт тестовый ПК с несколькими слотами."""
+    pc = PC(
+        name="test_pc_multi",
+        display_name="Test PC Multi",
+        daily_limit_minutes=120,
+    )
+    session.add(pc)
+    await session.flush()
+
+    for days, allowed_from, allowed_until in slots:
+        slot = ScheduleSlot(
+            pc_id=pc.id,
+            days=days,
+            allowed_from=allowed_from,
+            allowed_until=allowed_until,
+            is_active=True,
+        )
+        session.add(slot)
+
+    await session.commit()
+    return pc.id
 
 
 class TestGetEndOfDay:
@@ -120,77 +189,6 @@ class TestIsAllowedNow:
         local_now = datetime(2026, 8, 21, 18, 30, 0)
         allowed = await is_allowed_now(db_session, settings, pc_id, local_now)
         assert allowed is True  # Нет активных слотов → разрешено
-
-
-# Вспомогательные функции для создания тестовых данных
-async def create_test_pc_with_schedule(
-    session,
-    days: list[str],
-    allowed_from: time,
-    allowed_until: time,
-    is_active: bool = True,
-) -> int:
-    """Создаёт тестовый ПК с одним слотом расписания."""
-    from app.models import PC, ScheduleSlot
-
-    pc = PC(
-        name="test_pc",
-        display_name="Test PC",
-        daily_limit_minutes=120,
-    )
-    session.add(pc)
-    await session.flush()
-
-    slot = ScheduleSlot(
-        pc_id=pc.id,
-        days=days,
-        allowed_from=allowed_from,
-        allowed_until=allowed_until,
-        is_active=is_active,
-    )
-    session.add(slot)
-    await session.commit()
-
-    return pc.id
-
-
-async def create_test_pc_with_multiple_slots(
-    session,
-    slots: list[tuple[list[str], time, time]],
-) -> int:
-    """Создаёт тестовый ПК с несколькими слотами."""
-    from app.models import PC, ScheduleSlot
-
-    pc = PC(
-        name="test_pc_multi",
-        display_name="Test PC Multi",
-        daily_limit_minutes=120,
-    )
-    session.add(pc)
-    await session.flush()
-
-    for days, allowed_from, allowed_until in slots:
-        slot = ScheduleSlot(
-            pc_id=pc.id,
-            days=days,
-            allowed_from=allowed_from,
-            allowed_until=allowed_until,
-            is_active=True,
-        )
-        session.add(slot)
-
-    await session.commit()
-    return pc.id
-
-
-# Вспомогательная функция для создания тестового ПК (общая для всех тестов)
-async def create_test_pc(session, name="test_pc"):
-    from app.models import PC
-
-    pc = PC(name=name, display_name=name, daily_limit_minutes=120)
-    session.add(pc)
-    await session.commit()
-    return pc
 
 
 class TestHandleHeartbeat:
@@ -356,3 +354,83 @@ class TestUnlockPc:
         # И была отправлена команда unlock
         args = mqtt_mock.send_pc_command.call_args_list[-1][0]
         assert args[1]["action"] == "unlock"
+
+
+class TestAddTime:
+    """Честная история: бонус отдельно, факт отдельно."""
+
+    @pytest.mark.asyncio()
+    async def test_add_time_increases_bonus_not_active(self, settings, db_session, mocker):
+        """add_time увеличивает bonus_seconds, не трогая active_seconds."""
+        pc = await create_test_pc(db_session, name="bonus_pc")
+        usage = UsageDaily(
+            pc_id=pc.id,
+            usage_date=_today(settings),
+            active_seconds=3600,
+            locked_seconds=0,
+        )
+        db_session.add(usage)
+        await db_session.commit()
+        mqtt_mock = mocker.AsyncMock()
+
+        await pc_service.add_time(db_session, mqtt_mock, settings, pc, minutes=30)
+        await db_session.commit()
+
+        assert usage.bonus_seconds == 1800
+        assert usage.active_seconds == 3600  # факт не тронут
+
+    @pytest.mark.asyncio()
+    async def test_add_time_does_not_unlock_schedule_lock(self, settings, db_session, mocker):
+        """Бонус не снимает блокировку по расписанию."""
+        pc = await create_test_pc(db_session, name="bonus_sched_pc")
+        pc.desired_locked = True
+        pc.desired_lock_reason = "schedule"
+        await db_session.commit()
+        mqtt_mock = mocker.AsyncMock()
+
+        await pc_service.add_time(db_session, mqtt_mock, settings, pc, minutes=30)
+        await db_session.commit()
+
+        assert pc.desired_locked is True
+        # Только команда add_time, без unlock
+        assert mqtt_mock.send_pc_command.call_count == 1
+        assert mqtt_mock.send_pc_command.call_args[0][1]["action"] == "add_time"
+
+    @pytest.mark.asyncio()
+    async def test_add_time_does_not_unlock_manual_lock(self, settings, db_session, mocker):
+        """Бонус не снимает ручную блокировку."""
+        pc = await create_test_pc(db_session, name="bonus_manual_pc")
+        pc.desired_locked = True
+        pc.desired_lock_reason = "manual"
+        await db_session.commit()
+        mqtt_mock = mocker.AsyncMock()
+
+        await pc_service.add_time(db_session, mqtt_mock, settings, pc, minutes=30)
+        await db_session.commit()
+
+        assert pc.desired_locked is True
+        assert mqtt_mock.send_pc_command.call_count == 1
+
+    @pytest.mark.asyncio()
+    async def test_add_time_unlocks_daily_limit_lock(self, settings, db_session, mocker):
+        """Бонус снимает блокировку по лимиту, если лимит больше не превышен."""
+        pc = await create_test_pc(db_session, name="bonus_limit_pc")
+        pc.daily_limit_minutes = 60
+        pc.desired_locked = True
+        pc.desired_lock_reason = "daily_limit"
+        usage = UsageDaily(
+            pc_id=pc.id,
+            usage_date=_today(settings),
+            active_seconds=61 * 60,
+            locked_seconds=0,
+        )
+        db_session.add(usage)
+        await db_session.commit()
+        mqtt_mock = mocker.AsyncMock()
+
+        await pc_service.add_time(db_session, mqtt_mock, settings, pc, minutes=30)
+        await db_session.commit()
+
+        assert pc.desired_locked is False
+        actions = [c[0][1]["action"] for c in mqtt_mock.send_pc_command.call_args_list]
+        assert actions == ["add_time", "unlock"]

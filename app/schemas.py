@@ -11,6 +11,7 @@ class PCRead(BaseModel):
     display_name: str
 
     daily_limit_minutes: int
+    day_limits: dict[str, int]
     warning_before_lock_seconds: int
 
     is_active: bool
@@ -60,6 +61,7 @@ class UsageToday(BaseModel):
 
     active_seconds: int
     locked_seconds: int
+    bonus_seconds: int
     limit_seconds: int
     usage_percent: float  # 0-100
 
@@ -134,6 +136,7 @@ class PCUpdateRequest(BaseModel):
 
     display_name: str | None = None
     daily_limit_minutes: int | None = Field(default=None, ge=0)
+    day_limits: dict[str, int] | None = None
     warning_before_lock_seconds: int | None = Field(default=None, ge=0)
     is_active: bool | None = None
 

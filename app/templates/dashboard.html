@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Дашборд — desk-curfew{% endblock %}
+{% block content %}
+<nav>
+  <ul><li><strong>desk-curfew</strong></li></ul>
+  <ul>
+    <li>{{ user.username }}</li>
+    <li>
+      <form method="post" action="/logout" style="margin: 0;">
+        <button class="secondary" type="submit">Выйти</button>
+      </form>
+    </li>
+  </ul>
+</nav>
+
+<h3>Дашборд</h3>
+
+<div id="pc-grid"
+     hx-get="/web/partials/pc-grid"
+     hx-trigger="every 30s"
+     hx-swap="innerHTML">
+  {% include "partials/pc_grid.html" %}
+</div>
+{% endblock %}

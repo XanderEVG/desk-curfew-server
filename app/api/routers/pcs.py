@@ -67,6 +67,8 @@ async def update_pc(
         pc.display_name = payload.display_name
     if payload.daily_limit_minutes is not None:
         pc.daily_limit_minutes = payload.daily_limit_minutes
+    if payload.day_limits is not None:
+        pc.day_limits = payload.day_limits
     if payload.warning_before_lock_seconds is not None:
         pc.warning_before_lock_seconds = payload.warning_before_lock_seconds
     if payload.is_active is not None:

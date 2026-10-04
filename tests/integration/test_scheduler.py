@@ -1,15 +1,21 @@
 """Тесты планировщика (scheduler)."""
-from datetime import UTC, datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
+from zoneinfo import ZoneInfo
 
 from app.config import Settings
 from app.core.mqtt_client import MqttService
 from app.core.scheduler import process_pc, tick_with_session
 from app.models import PC, ScheduleSlot, UsageDaily
+
+
+def real_today(settings: Settings):
+    """Реальная сегодняшняя дата в таймзоне сервера."""
+    return datetime.now(timezone.utc).astimezone(ZoneInfo(settings.server_timezone)).date()
 
 
 @pytest_asyncio.fixture
@@ -39,14 +45,12 @@ async def test_pc(db_session: AsyncSession, now_utc: datetime) -> PC:
 @pytest.fixture()
 def now_utc() -> datetime:
     """Текущее время UTC."""
-    return datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)  # Понедельник
+    return datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)  # Понедельник
 
 
 @pytest.fixture()
 def local_now(settings: Settings, now_utc: datetime) -> datetime:
     """Локальное время."""
-    from zoneinfo import ZoneInfo
-
     return now_utc.astimezone(ZoneInfo(settings.server_timezone))
 
 
@@ -56,7 +60,6 @@ class TestOfflineDetection:
     @pytest.mark.asyncio()
     async def test_pc_offline_by_heartbeat_timeout(self, db_session, settings, mqtt_mock, test_pc, now_utc, local_now):
         """ПК помечается оффлайн, если heartbeat старше timeout."""
-        # last_seen_at старше heartbeat_timeout (90 сек по умолчанию)
         test_pc.last_seen_at = now_utc - timedelta(seconds=120)
         test_pc.is_online = True
         await db_session.commit()
@@ -102,16 +105,9 @@ class TestDailyLimit:
         test_pc.desired_locked = False
         await db_session.commit()
 
-        # Создаём usage с превышением лимита
-        # Важно: get_usage_today использует datetime.now(UTC), поэтому берём реальную дату
-        from datetime import UTC as REAL_UTC
-
-        from zoneinfo import ZoneInfo
-
-        today = datetime.now(REAL_UTC).astimezone(ZoneInfo(settings.server_timezone)).date()
         usage = UsageDaily(
             pc_id=test_pc.id,
-            usage_date=today,
+            usage_date=real_today(settings),
             active_seconds=61 * 60,  # 61 минута > 60 минут лимит
             locked_seconds=0,
         )
@@ -136,15 +132,9 @@ class TestDailyLimit:
         test_pc.desired_locked = False
         await db_session.commit()
 
-        # Используем реальную дату (get_usage_today использует datetime.now(UTC))
-        from datetime import UTC as REAL_UTC
-
-        from zoneinfo import ZoneInfo
-
-        today = datetime.now(REAL_UTC).astimezone(ZoneInfo(settings.server_timezone)).date()
         usage = UsageDaily(
             pc_id=test_pc.id,
-            usage_date=today,
+            usage_date=real_today(settings),
             active_seconds=60 * 60,  # 60 минут < 120 минут лимит
             locked_seconds=0,
         )
@@ -165,12 +155,10 @@ class TestSchedule:
         test_pc.desired_locked = False
         await db_session.commit()
 
-        # Расписание: только с 14:00 до 18:00, а сейчас 12:00 (локальное)
-        # Для Asia/Yekaterinburg (UTC+5) 12:00 UTC = 17:00 локальное
-        # Нужно создать расписание, в которое текущее время НЕ попадает
+        # Понедельник НЕ включён в дни слота
         slot = ScheduleSlot(
             pc_id=test_pc.id,
-            days=["tue", "wed", "thu", "fri", "sat", "sun"],  # Понедельник НЕ включён
+            days=["tue", "wed", "thu", "fri", "sat", "sun"],
             allowed_from=time(10, 0),
             allowed_until=time(20, 0),
             is_active=True,
@@ -191,7 +179,6 @@ class TestSchedule:
         test_pc.desired_locked = False
         await db_session.commit()
 
-        # Расписание включает понедельник и текущее время
         slot = ScheduleSlot(
             pc_id=test_pc.id,
             days=["mon", "tue", "wed", "thu", "fri"],
@@ -218,7 +205,6 @@ class TestUnlock:
         test_pc.is_locked = True
         await db_session.commit()
 
-        # Расписание разрешает текущее время
         slot = ScheduleSlot(
             pc_id=test_pc.id,
             days=["mon"],
@@ -250,7 +236,6 @@ class TestUnlock:
 
         await process_pc(db_session, settings, mqtt_mock, test_pc, now_utc, local_now)
 
-        # Ручная блокировка не снимается автоматически (пока не истечёт)
         mqtt_mock.send_pc_command.assert_not_called()
 
 
@@ -281,9 +266,7 @@ class TestResendLock:
     """Тесты повторной отправки команды блокировки."""
 
     @pytest.mark.asyncio()
-    async def test_resend_lock_if_not_locked_by_agent(
-        self, db_session, settings, mqtt_mock, test_pc, now_utc, local_now
-    ):
+    async def test_resend_lock_if_not_locked_by_agent(self, db_session, settings, mqtt_mock, test_pc, now_utc, local_now):
         """Повторная отправка lock, если агент не заблокировал."""
         test_pc.desired_locked = True
         test_pc.desired_lock_reason = "schedule"
@@ -311,13 +294,13 @@ class TestResendLock:
     @pytest.mark.asyncio()
     async def test_no_resend_if_recent_command(self, db_session, settings, mqtt_mock, test_pc, now_utc, local_now):
         """Нет повторной отправки, если команда была недавно."""
+        test_pc.last_seen_at = now_utc - timedelta(seconds=30)
         test_pc.desired_locked = True
         test_pc.desired_lock_reason = "schedule"
         test_pc.is_locked = False
         test_pc.last_command_at = now_utc - timedelta(seconds=60)  # Прошло < 120 сек
         await db_session.commit()
 
-        # Расписание запрещает (должен быть заблокирован)
         slot = ScheduleSlot(
             pc_id=test_pc.id,
             days=["tue"],  # Понедельник не включён
@@ -339,7 +322,6 @@ class TestTickWithSession:
     @pytest.mark.asyncio()
     async def test_tick_processes_all_active_pcs(self, db_session, settings, mqtt_mock, now_utc):
         """tick_with_session обрабатывает все активные ПК."""
-        # Создаём несколько ПК
         pc1 = PC(name="pc1", display_name="PC 1", is_active=True, is_online=True, last_seen_at=now_utc)
         pc2 = PC(name="pc2", display_name="PC 2", is_active=True, is_online=True, last_seen_at=now_utc)
         pc3 = PC(
@@ -350,13 +332,11 @@ class TestTickWithSession:
 
         await tick_with_session(db_session, settings, mqtt_mock)
 
-        # Проверяем, что MQTT не вызывался (нет расписания/лимита для блокировки)
         mqtt_mock.send_pc_command.assert_not_called()
 
     @pytest.mark.asyncio()
     async def test_tick_skips_offline_pcs(self, db_session, settings, mqtt_mock, now_utc):
         """tick_with_session пропускает оффлайн ПК."""
-        # Создаём оффлайн ПК (last_seen_at старше heartbeat_timeout)
         pc_offline = PC(
             name="pc_offline",
             display_name="PC Offline",
@@ -371,7 +351,5 @@ class TestTickWithSession:
         await db_session.commit()
         await db_session.refresh(pc_offline)
 
-        # ПК должен быть помечен как оффлайн
         assert pc_offline.is_online is False
-        # Команды не отправлялись
         mqtt_mock.send_pc_command.assert_not_called()

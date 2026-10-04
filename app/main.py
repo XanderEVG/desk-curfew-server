@@ -1,14 +1,23 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager, suppress
+from pathlib import Path
+
+from fastapi.staticfiles import StaticFiles
+from starlette.requests import Request
+from starlette.responses import RedirectResponse
 
 from app.api.routers import auth, control, health, pcs, stats
 from app.config import get_settings
 from app.core.mqtt_client import MqttService
 from app.core.scheduler import run_scheduler
 from app.fastapi_app import CurfewApp
+from app.web.router import LoginRequiredError
+from app.web.router import router as web_router
 
 logger = logging.getLogger(__name__)
+
+BASE_DIR = Path(__file__).resolve().parent
 
 
 @asynccontextmanager
@@ -55,12 +64,11 @@ app.include_router(pcs.router)
 app.include_router(control.router)
 app.include_router(auth.router)
 app.include_router(stats.router)
+app.include_router(web_router)
+
+app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 
-@app.get("/")
-async def root() -> dict:
-    return {
-        "docs": "/docs",
-        "health": "/health",
-        "pcs": "/api/pcs",
-    }
+@app.exception_handler(LoginRequiredError)
+async def login_required_handler(request: Request, exc: LoginRequiredError):
+    return RedirectResponse("/login", status_code=303)

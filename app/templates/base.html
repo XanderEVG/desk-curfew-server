@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}desk-curfew{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', path='favicon.svg') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='vendor/pico.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}">
+  <script src="{{ url_for('static', path='vendor/htmx.min.js') }}"></script>
+  <script src="{{ url_for('static', path='vendor/htmx.min.js') }}"></script>
+  <script src="{{ url_for('static', path='js/app.js') }}"></script>
+</head>
+<body>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

@@ -1,5 +1,4 @@
 """Общие фикстуры для тестов."""
-import asyncio
 from collections.abc import AsyncGenerator
 
 import pytest
@@ -28,18 +27,9 @@ def settings():
     )
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    """Создаёт event loop для всех тестов."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
-
 @pytest_asyncio.fixture
 async def db_session() -> AsyncGenerator[AsyncSession, None]:
     """Создаёт сессию к тестовой PostgreSQL БД.
-
     Перед запуском тестов: docker compose --profile test up -d test-db
     """
     engine = create_async_engine(TEST_DATABASE_URL, echo=False)

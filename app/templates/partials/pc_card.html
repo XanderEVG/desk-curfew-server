@@ -1,0 +1,65 @@
+<article class="pc-card {% if not pc.is_online %}offline{% endif %}">
+  <header>
+    <a href="/pcs/{{ pc.name }}"><strong>{{ pc.display_name }}</strong></a>
+        <span>
+      <span class="badge {% if pc.is_online %}online{% else %}offline{% endif %}">
+        {{ 'онлайн' if pc.is_online else 'оффлайн' }}
+      </span>
+      {% if pc.is_locked %}<span class="badge locked">заблокирован</span>{% endif %}
+      {% if pc.desired_locked and not pc.is_locked %}
+      <span class="badge pending">ожидает блокировки</span>
+      {% endif %}
+    </span>
+  </header>
+
+  <p class="muted">
+    {{ pc.name }}
+    {% if pc.last_active_user %} · пользователь: {{ pc.last_active_user }}{% endif %}
+    {% if pc.last_seen_at %} · был в сети: {{ pc.last_seen_at | fmt_dt }}{% endif %}
+  </p>
+
+  <div class="progress">
+    <div class="progress-bar
+         {% if usage.usage_percent >= 100 %}danger{% elif usage.usage_percent >= 75 %}warn{% endif %}"
+         style="width: {{ [usage.usage_percent, 100] | min }}%"></div>
+  </div>
+  <p class="muted">
+    {{ usage.active_seconds | fmt_duration }}
+    из {{ usage.limit_seconds | fmt_duration }}
+    ({{ usage.usage_percent | round(0) | int }}%)
+    {% if usage.bonus_seconds %}· бонус +{{ usage.bonus_seconds | fmt_duration }}{% endif %}
+  </p>
+
+  <footer>
+    <button hx-post="/web/pcs/{{ pc.name }}/lock"
+            hx-target="#pc-grid" hx-swap="innerHTML"
+            {% if pc.desired_locked %}disabled{% endif %}>
+      Заблокировать
+    </button>
+    <button class="secondary"
+            hx-post="/web/pcs/{{ pc.name }}/unlock"
+            hx-target="#pc-grid" hx-swap="innerHTML"
+            {% if not pc.desired_locked %}disabled{% endif %}>
+      Разблокировать
+    </button>
+
+    <div class="dropdown">
+      <button class="secondary"
+              hx-post="/web/pcs/{{ pc.name }}/add-time"
+              hx-vals='{"minutes": 30}'
+              hx-target="#pc-grid" hx-swap="innerHTML">
+        +30 мин
+      </button>
+      <button class="secondary dropdown-toggle" type="button" aria-label="Другое время">▾</button>
+      <div class="dropdown-menu">
+        {% for m in (5, 10, 30, 60, 120) %}
+        <button hx-post="/web/pcs/{{ pc.name }}/add-time"
+                hx-vals='{"minutes": {{ m }}}'
+                hx-target="#pc-grid" hx-swap="innerHTML">
+          +{{ m }} мин
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+  </footer>
+</article>

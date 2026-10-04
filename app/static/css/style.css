@@ -1,0 +1,121 @@
+body {
+  padding-bottom: 4rem;
+}
+
+nav form button {
+  width: auto;
+  padding: 0.25rem 0.75rem;
+  margin: 0;
+}
+
+/* === Дашборд === */
+.stats-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-bottom: 1.25rem;
+  color: var(--pico-muted-color);
+  font-size: 0.9rem;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1rem;
+}
+
+.pc-card header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pc-card.offline {
+  opacity: 0.65;
+}
+
+.muted {
+  color: var(--pico-muted-color);
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.1rem 0.55rem;
+  border-radius: 0.6rem;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+.badge.online  { background: #e6f4ea; color: #1e7e34; }
+.badge.offline { background: #ececec; color: #666; }
+.badge.locked  { background: #fdecea; color: #c62828; }
+
+.progress {
+  height: 0.5rem;
+  border-radius: 0.3rem;
+  background: #e3e7ea;
+  overflow: hidden;
+  margin: 0.6rem 0 0.3rem;
+}
+.progress-bar {
+  height: 100%;
+  background: #2fa664;
+  transition: width 0.4s ease;
+}
+.progress-bar.warn   { background: #f2a33c; }
+.progress-bar.danger { background: #d93025; }
+
+.pc-card footer {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.pc-card footer button {
+  margin-bottom: 0;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8rem;
+  width: auto;
+  flex: 1;
+}
+
+.badge.pending { background: #fff4e0; color: #b26a00; }
+
+/* Дропдаун «добавить время» */
+.pc-card footer .dropdown {
+  position: relative;
+  flex: 1;
+  display: flex;
+  gap: 0.25rem;
+}
+.pc-card footer .dropdown > button:first-child { flex: 1; }
+
+.dropdown-toggle {
+  width: auto;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.8rem;
+}
+
+.dropdown-menu {
+  display: none;
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 0.4rem);   /* раскрывается вверх, чтобы не резалось карточкой */
+  min-width: 110px;
+  padding: 0.4rem;
+  background: var(--pico-background-color);
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 10%);
+  z-index: 10;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.dropdown.open .dropdown-menu { display: flex; }
+.dropdown-menu button {
+  width: 100%;
+  margin-bottom: 0;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.8rem;
+}

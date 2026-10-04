@@ -1,10 +1,10 @@
 """Тесты для логики планировщика."""
-
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
 
 import pytest
 from zoneinfo import ZoneInfo
 
+from app.core.pc_service import WEEKDAY_NAMES
 from app.core.scheduler import process_pc
 from app.models import PC, ScheduleSlot, UsageDaily
 
@@ -14,6 +14,14 @@ def make_now():
     now_utc = datetime(2026, 8, 21, 9, 0, 0, tzinfo=timezone.utc)  # 09:00 UTC = 14:00 Yekaterinburg
     local_now = now_utc.astimezone(ZoneInfo("Asia/Yekaterinburg"))
     return now_utc, local_now
+
+
+def real_today(settings):
+    """Реальная сегодняшняя дата в таймзоне сервера.
+
+    Нужна, потому что get_usage_today внутри process_pc смотрит на реальные часы.
+    """
+    return datetime.now(timezone.utc).astimezone(ZoneInfo(settings.server_timezone)).date()
 
 
 async def create_online_pc(session, name="sched_pc", daily_limit=120):
@@ -64,22 +72,34 @@ class TestProcessPc:
     async def test_lock_by_daily_limit(self, settings, db_session, mocker):
         """При превышении дневного лимита блокирует, даже если расписание разрешает."""
         pc = await create_online_pc(db_session, daily_limit=1)  # 60 сек
-        # Создаём usage с превышением
-        now_utc, local_now = make_now()
+        pc.daily_limit_minutes = 60  # переопределяем для ясности
+        pc.desired_locked = False
+        await db_session.commit()
+
+        # Создаём usage с превышением лимита
+        # Важно: get_usage_today использует datetime.now(UTC), поэтому берём реальную дату
         usage = UsageDaily(
             pc_id=pc.id,
-            usage_date=local_now.date(),
-            active_seconds=120,
+            usage_date=real_today(settings),
+            active_seconds=61 * 60,  # 61 минута > 60 минут лимит
             locked_seconds=0,
         )
         db_session.add(usage)
         await db_session.commit()
+
+        now_utc, local_now = make_now()
         mqtt_mock = mocker.AsyncMock()
 
         await process_pc(db_session, settings, mqtt_mock, pc, now_utc, local_now)
+        await db_session.commit()
+        await db_session.refresh(pc)
 
         assert pc.desired_locked is True
         assert pc.desired_lock_reason == "daily_limit"
+        mqtt_mock.send_pc_command.assert_called_once()
+        call_args = mqtt_mock.send_pc_command.call_args[0]
+        assert call_args[1]["action"] == "lock_in"
+        assert call_args[1]["reason"] == "daily_limit"
 
     @pytest.mark.asyncio()
     async def test_manual_lock_not_released_by_scheduler(self, settings, db_session, mocker):
@@ -89,9 +109,6 @@ class TestProcessPc:
         pc.desired_lock_reason = "manual"
         now_utc, local_now = make_now()
         # manual_lock_until в будущем
-        pc.manual_lock_until = now_utc + timezone.utc.utcoffset(None) or now_utc
-        from datetime import timedelta
-
         pc.manual_lock_until = now_utc + timedelta(hours=5)
         await db_session.commit()
         mqtt_mock = mocker.AsyncMock()
@@ -138,8 +155,6 @@ class TestProcessPc:
         now_utc, local_now = make_now()
         pc = await create_online_pc(db_session)
         # last_seen_at = 200 секунд назад (timeout 90)
-        from datetime import timedelta
-
         pc.last_seen_at = now_utc - timedelta(seconds=200)
         await db_session.commit()
         mqtt_mock = mocker.AsyncMock()
@@ -147,4 +162,62 @@ class TestProcessPc:
         await process_pc(db_session, settings, mqtt_mock, pc, now_utc, local_now)
 
         assert pc.is_online is False
+        mqtt_mock.send_pc_command.assert_not_called()
+
+
+class TestDayLimitsAndBonus:
+    """Лимиты по дням недели и бонусное время."""
+
+    @pytest.mark.asyncio()
+    async def test_lock_by_weekday_limit(self, settings, db_session, mocker):
+        """day_limits для текущего дня недели приоритетнее daily_limit_minutes."""
+        pc = await create_online_pc(db_session)
+        pc.daily_limit_minutes = 180  # базовый лимит большой
+        _, local_now = make_now()
+        # Ограничиваем именно тот день недели, который видит process_pc
+        pc.day_limits = {WEEKDAY_NAMES[local_now.weekday()]: 60}
+        pc.desired_locked = False
+        await db_session.commit()
+
+        usage = UsageDaily(
+            pc_id=pc.id,
+            usage_date=real_today(settings),
+            active_seconds=61 * 60,  # > 60 минут лимита дня
+            locked_seconds=0,
+        )
+        db_session.add(usage)
+        await db_session.commit()
+
+        now_utc, local = make_now()
+        mqtt_mock = mocker.AsyncMock()
+
+        await process_pc(db_session, settings, mqtt_mock, pc, now_utc, local)
+
+        assert pc.desired_locked is True
+        assert pc.desired_lock_reason == "daily_limit"
+
+    @pytest.mark.asyncio()
+    async def test_bonus_extends_limit(self, settings, db_session, mocker):
+        """bonus_seconds расширяет лимит — блокировки нет."""
+        pc = await create_online_pc(db_session)
+        pc.daily_limit_minutes = 60
+        pc.desired_locked = False
+        await db_session.commit()
+
+        usage = UsageDaily(
+            pc_id=pc.id,
+            usage_date=real_today(settings),
+            active_seconds=61 * 60,  # превышение базы
+            locked_seconds=0,
+            bonus_seconds=10 * 60,   # но бонус покрывает
+        )
+        db_session.add(usage)
+        await db_session.commit()
+
+        now_utc, local_now = make_now()
+        mqtt_mock = mocker.AsyncMock()
+
+        await process_pc(db_session, settings, mqtt_mock, pc, now_utc, local_now)
+
+        assert pc.desired_locked is False
         mqtt_mock.send_pc_command.assert_not_called()
