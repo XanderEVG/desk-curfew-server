@@ -1,7 +1,11 @@
 <article class="pc-card {% if not pc.is_online %}offline{% endif %}">
   <header>
-    <a href="/pcs/{{ pc.name }}"><strong>{{ pc.display_name }}</strong></a>
-        <span>
+    <div class="pc-title">
+      <a href="/pcs/{{ pc.name }}" title="{{ pc.display_name }}">
+        <strong>{{ pc.display_name }}</strong>
+      </a>
+    </div>
+    <div class="pc-badges">
       <span class="badge {% if pc.is_online %}online{% else %}offline{% endif %}">
         {{ 'онлайн' if pc.is_online else 'оффлайн' }}
       </span>
@@ -9,7 +13,7 @@
       {% if pc.desired_locked and not pc.is_locked %}
       <span class="badge pending">ожидает блокировки</span>
       {% endif %}
-    </span>
+    </div>
   </header>
 
   <p class="muted">
@@ -43,7 +47,7 @@
       Разблокировать
     </button>
 
-    <div class="dropdown">
+    <div class="btn-split">
       <button class="secondary"
               hx-post="/web/pcs/{{ pc.name }}/add-time"
               hx-vals='{"minutes": 30}'

@@ -1,0 +1,15 @@
+<nav>
+  <ul>
+    <li><a href="/"><strong>desk-curfew</strong></a></li>
+  </ul>
+  <ul>
+    {% if user %}
+    <li>{{ user.username }}</li>
+    <li>
+      <form method="post" action="/logout" style="margin: 0;">
+        <button class="nav-btn" type="submit">Выйти</button>
+      </form>
+    </li>
+    {% endif %}
+  </ul>
+</nav>

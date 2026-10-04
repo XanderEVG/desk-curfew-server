@@ -1,11 +1,15 @@
+/* === База === */
 body {
   padding-bottom: 4rem;
 }
 
-nav form button {
+/* === Навигация: компактная кнопка (п.5) === */
+.nav-btn {
   width: auto;
-  padding: 0.25rem 0.75rem;
+  height: auto;
   margin: 0;
+  padding: 0.25rem 0.8rem;
+  font-size: 0.85rem;
 }
 
 /* === Дашборд === */
@@ -20,19 +24,47 @@ nav form button {
 
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
   gap: 1rem;
 }
 
-.pc-card header {
+.pc-card {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.5rem;
+  flex-direction: column;
+  margin-bottom: 0;
 }
 
 .pc-card.offline {
   opacity: 0.65;
+}
+
+/* Шапка: ФИКСИРОВАННАЯ высота — карточки всегда симметричные (п.2) */
+.pc-card header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  height: 3.5rem;
+  overflow: hidden;
+}
+
+.pc-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.pc-title a {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.pc-badges {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.2rem;
+  flex-shrink: 0;
 }
 
 .muted {
@@ -41,16 +73,19 @@ nav form button {
   margin-bottom: 0.25rem;
 }
 
+/* Компактные бейджи — два штуки гарантированно влезают в 3.2rem */
 .badge {
   display: inline-block;
-  padding: 0.1rem 0.55rem;
+  padding: 0.05rem 0.5rem;
   border-radius: 0.6rem;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
+  line-height: 1.4;
   white-space: nowrap;
 }
 .badge.online  { background: #e6f4ea; color: #1e7e34; }
 .badge.offline { background: #ececec; color: #666; }
 .badge.locked  { background: #fdecea; color: #c62828; }
+.badge.pending { background: #fff4e0; color: #b26a00; }
 
 .progress {
   height: 0.5rem;
@@ -67,55 +102,72 @@ nav form button {
 .progress-bar.warn   { background: #f2a33c; }
 .progress-bar.danger { background: #d93025; }
 
+/* Футер: прижат к низу, переносится на узких карточках (п.3) */
 .pc-card footer {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
-  margin-top: 0.75rem;
+  margin-top: auto;
+  padding-top: 0.75rem;
 }
+
 .pc-card footer button {
   margin-bottom: 0;
-  padding: 0.4rem 0.6rem;
-  font-size: 0.8rem;
-  width: auto;
-  flex: 1;
+  padding: 0.45rem 0.5rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
 }
 
-.badge.pending { background: #fff4e0; color: #b26a00; }
+.pc-card footer > button {
+  flex: 1 1 0;
+  min-width: 0;
+}
 
-/* Дропдаун «добавить время» */
-.pc-card footer .dropdown {
+/* Сплит-кнопка «+30 мин» + треугольник */
+.btn-split {
   position: relative;
-  flex: 1;
   display: flex;
-  gap: 0.25rem;
-}
-.pc-card footer .dropdown > button:first-child { flex: 1; }
-
-.dropdown-toggle {
-  width: auto;
-  padding: 0.4rem 0.5rem;
-  font-size: 0.8rem;
+  flex: 0 0 auto;
 }
 
+.btn-split > button:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.btn-split .dropdown-toggle {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left: 1px solid rgb(0 0 0 / 15%);
+  padding-inline: 0.55rem;
+  filter: brightness(0.85);
+}
+
+/* Меню: ВНИЗ и непрозрачное (п.4) */
 .dropdown-menu {
   display: none;
   position: absolute;
   right: 0;
-  bottom: calc(100% + 0.4rem);   /* раскрывается вверх, чтобы не резалось карточкой */
+  top: calc(100% + 0.4rem);
   min-width: 110px;
   padding: 0.4rem;
-  background: var(--pico-background-color);
+  background: var(--pico-card-background-color, #fff);
   border: 1px solid var(--pico-muted-border-color);
   border-radius: 0.5rem;
-  box-shadow: 0 4px 12px rgb(0 0 0 / 10%);
-  z-index: 10;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
+  z-index: 20;
   flex-direction: column;
   gap: 0.25rem;
 }
-.dropdown.open .dropdown-menu { display: flex; }
+
+.btn-split.open .dropdown-menu {
+  display: flex;
+}
+
 .dropdown-menu button {
   width: 100%;
   margin-bottom: 0;
   padding: 0.3rem 0.5rem;
   font-size: 0.8rem;
+  white-space: nowrap;
 }

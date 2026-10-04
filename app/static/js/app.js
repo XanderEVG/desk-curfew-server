@@ -1,17 +1,17 @@
-// Дропдаун-меню «добавить время»
+// Сплит-кнопка «+30 мин»: открытие/закрытие меню значений
 document.addEventListener("click", (event) => {
   const toggle = event.target.closest(".dropdown-toggle");
   if (toggle) {
     event.stopPropagation();
-    const dropdown = toggle.closest(".dropdown");
-    document.querySelectorAll(".dropdown.open").forEach((d) => {
-      if (d !== dropdown) d.classList.remove("open");
+    const split = toggle.closest(".btn-split");
+    document.querySelectorAll(".btn-split.open").forEach((s) => {
+      if (s !== split) s.classList.remove("open");
     });
-    dropdown.classList.toggle("open");
+    split.classList.toggle("open");
     return;
   }
-  // Клик вне меню — закрыть (пункты меню сами переза рендерят сетку)
+  // Клик вне меню — закрыть все
   if (!event.target.closest(".dropdown-menu")) {
-    document.querySelectorAll(".dropdown.open").forEach((d) => d.classList.remove("open"));
+    document.querySelectorAll(".btn-split.open").forEach((s) => s.classList.remove("open"));
   }
 });
