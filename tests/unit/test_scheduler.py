@@ -1,4 +1,5 @@
 """Тесты для логики планировщика."""
+
 from datetime import datetime, time, timedelta, timezone
 
 import pytest
@@ -209,7 +210,7 @@ class TestDayLimitsAndBonus:
             usage_date=real_today(settings),
             active_seconds=61 * 60,  # превышение базы
             locked_seconds=0,
-            bonus_seconds=10 * 60,   # но бонус покрывает
+            bonus_seconds=10 * 60,  # но бонус покрывает
         )
         db_session.add(usage)
         await db_session.commit()

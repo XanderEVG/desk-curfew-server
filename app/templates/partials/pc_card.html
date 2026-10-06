@@ -13,6 +13,9 @@
       {% if pc.desired_locked and not pc.is_locked %}
       <span class="badge pending">Ожидает блокировки</span>
       {% endif %}
+      {% if pc.is_idle and pc.is_online and not pc.is_locked %}
+      <span class="badge idle">Отошёл</span>
+      {% endif %}
     </div>
   </header>
 

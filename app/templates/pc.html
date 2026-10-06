@@ -19,7 +19,7 @@
     {{ usage.active_seconds | fmt_duration }} из {{ usage.limit_seconds | fmt_duration }}
     ({{ usage.usage_percent | round(0) | int }}%)
     {% if usage.bonus_seconds %} <small class="bonus">(+{{ usage.bonus_seconds | fmt_duration }})</small>{% endif %}
-    <br>В блокировке: {{ usage.locked_seconds | fmt_duration }}
+    <br>В блокировке: {{ usage.locked_seconds | fmt_duration }}{% if usage.idle_seconds %} · Отошёл: {{ usage.idle_seconds | fmt_duration }}{% endif %}
   </p>
   <div class="chart">
     {% for day in chart %}

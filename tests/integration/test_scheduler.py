@@ -1,4 +1,5 @@
 """Тесты планировщика (scheduler)."""
+
 from datetime import datetime, time, timedelta, timezone
 from unittest.mock import AsyncMock
 
@@ -266,7 +267,9 @@ class TestResendLock:
     """Тесты повторной отправки команды блокировки."""
 
     @pytest.mark.asyncio()
-    async def test_resend_lock_if_not_locked_by_agent(self, db_session, settings, mqtt_mock, test_pc, now_utc, local_now):
+    async def test_resend_lock_if_not_locked_by_agent(
+        self, db_session, settings, mqtt_mock, test_pc, now_utc, local_now
+    ):
         """Повторная отправка lock, если агент не заблокировал."""
         test_pc.desired_locked = True
         test_pc.desired_lock_reason = "schedule"

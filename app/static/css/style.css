@@ -179,6 +179,8 @@ body {
   white-space: nowrap;
 }
 
+.badge.idle { background: #e3f2fd; color: #1565c0; }
+
 /* === Страница ПК === */
 section {
   margin-top: 1.75rem;

@@ -159,7 +159,7 @@ class MqttService:
         async with AsyncSessionLocal() as session:
             try:
                 if kind == "hb":
-                    await pc_service.handle_heartbeat(session, self.settings, pc_name, payload)
+                    await pc_service.handle_heartbeat(session, self, self.settings, pc_name, payload)
                 elif kind == "status":
                     await pc_service.handle_status(session, pc_name, payload)
                 elif kind == "event":

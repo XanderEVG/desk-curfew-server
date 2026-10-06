@@ -1,4 +1,5 @@
 """Общие фикстуры для тестов."""
+
 from collections.abc import AsyncGenerator
 
 import pytest

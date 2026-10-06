@@ -1,5 +1,6 @@
 """Тесты для бизнес-логики управления ПК."""
-from datetime import datetime, time, timezone
+
+from datetime import datetime, time, timedelta, timezone
 
 import pytest
 from freezegun import freeze_time
@@ -31,11 +32,7 @@ async def create_test_pc_with_schedule(
     is_active: bool = True,
 ) -> int:
     """Создаёт тестовый ПК с одним слотом расписания."""
-    pc = PC(
-        name="test_pc",
-        display_name="Test PC",
-        daily_limit_minutes=120,
-    )
+    pc = PC(name="test_pc", display_name="Test PC", daily_limit_minutes=120)
     session.add(pc)
     await session.flush()
 
@@ -48,7 +45,6 @@ async def create_test_pc_with_schedule(
     )
     session.add(slot)
     await session.commit()
-
     return pc.id
 
 
@@ -57,11 +53,7 @@ async def create_test_pc_with_multiple_slots(
     slots: list[tuple[list[str], time, time]],
 ) -> int:
     """Создаёт тестовый ПК с несколькими слотами."""
-    pc = PC(
-        name="test_pc_multi",
-        display_name="Test PC Multi",
-        daily_limit_minutes=120,
-    )
+    pc = PC(name="test_pc_multi", display_name="Test PC Multi", daily_limit_minutes=120)
     session.add(pc)
     await session.flush()
 
@@ -195,12 +187,13 @@ class TestHandleHeartbeat:
     """Тесты для обработки heartbeat от агентов."""
 
     @pytest.mark.asyncio()
-    async def test_active_time_increases_when_unlocked(self, settings, db_session):
-        """Когда locked=false, должен расти active_seconds."""
+    async def test_active_time_increases_when_unlocked(self, settings, db_session, mocker):
+        """Когда locked=false и есть ввод, должен расти active_seconds."""
         pc = await create_test_pc(db_session, name="hb_test")
-
+        mqtt_mock = mocker.AsyncMock()
         payload = {"ts": "2026-08-21T10:00:00Z", "active_user": "kid1", "locked": False}
-        await pc_service.handle_heartbeat(db_session, settings, "hb_test", payload)
+
+        await pc_service.handle_heartbeat(db_session, mqtt_mock, settings, "hb_test", payload)
         await db_session.commit()
 
         usage = await pc_service.get_usage_today(db_session, settings, pc.id)
@@ -209,12 +202,13 @@ class TestHandleHeartbeat:
         assert usage.locked_seconds == 0
 
     @pytest.mark.asyncio()
-    async def test_locked_time_increases_when_locked(self, settings, db_session):
+    async def test_locked_time_increases_when_locked(self, settings, db_session, mocker):
         """Когда locked=true, должен расти locked_seconds."""
         pc = await create_test_pc(db_session, name="hb_locked_test")
-
+        mqtt_mock = mocker.AsyncMock()
         payload = {"ts": "2026-08-21T10:00:00Z", "active_user": "kid1", "locked": True}
-        await pc_service.handle_heartbeat(db_session, settings, "hb_locked_test", payload)
+
+        await pc_service.handle_heartbeat(db_session, mqtt_mock, settings, "hb_locked_test", payload)
         await db_session.commit()
 
         usage = await pc_service.get_usage_today(db_session, settings, pc.id)
@@ -222,14 +216,30 @@ class TestHandleHeartbeat:
         assert usage.locked_seconds == settings.heartbeat_interval  # 30
 
     @pytest.mark.asyncio()
-    async def test_heartbeat_updates_pc_fields(self, settings, db_session):
+    async def test_idle_time_goes_to_idle_seconds(self, settings, db_session, mocker):
+        """Без ввода время капает в idle_seconds, лимит не тратится."""
+        pc = await create_test_pc(db_session, name="hb_idle_pc")
+        mqtt_mock = mocker.AsyncMock()
+        payload = {"ts": "2026-08-21T10:00:00Z", "locked": False, "idle_seconds": 300}
+
+        await pc_service.handle_heartbeat(db_session, mqtt_mock, settings, "hb_idle_pc", payload)
+        await db_session.commit()
+
+        usage = await pc_service.get_usage_today(db_session, settings, pc.id)
+        assert usage.idle_seconds == settings.heartbeat_interval
+        assert usage.active_seconds == 0
+        assert pc.is_idle is True
+
+    @pytest.mark.asyncio()
+    async def test_heartbeat_updates_pc_fields(self, settings, db_session, mocker):
         """Heartbeat должен обновлять is_online, last_seen_at, last_active_user."""
         pc = await create_test_pc(db_session, name="hb_fields_test")
+        mqtt_mock = mocker.AsyncMock()
         assert pc.is_online is False
         assert pc.last_seen_at is None
 
         payload = {"ts": "2026-08-21T10:00:00Z", "active_user": "kid1", "locked": False}
-        await pc_service.handle_heartbeat(db_session, settings, "hb_fields_test", payload)
+        await pc_service.handle_heartbeat(db_session, mqtt_mock, settings, "hb_fields_test", payload)
         await db_session.commit()
         await db_session.refresh(pc)
 
@@ -238,12 +248,46 @@ class TestHandleHeartbeat:
         assert pc.last_active_user == "kid1"
 
     @pytest.mark.asyncio()
-    async def test_unknown_pc_does_not_crash(self, settings, db_session, caplog):
+    async def test_heartbeat_resends_lock_when_desired(self, settings, db_session, mocker):
+        """Агент жив, но не заблокирован при desired_locked — немедленный resend."""
+        pc = await create_test_pc(db_session, name="hb_resend_pc")
+        pc.desired_locked = True
+        pc.desired_lock_reason = "schedule"
+        pc.last_command_at = datetime.now(timezone.utc) - timedelta(seconds=200)
+        await db_session.commit()
+        mqtt_mock = mocker.AsyncMock()
+
+        await pc_service.handle_heartbeat(db_session, mqtt_mock, settings, "hb_resend_pc", {"locked": False})
+        await db_session.commit()
+
+        assert mqtt_mock.send_pc_command.call_count == 1
+        assert mqtt_mock.send_pc_command.call_args[0][1]["action"] == "lock_now"
+
+    @pytest.mark.asyncio()
+    async def test_no_resend_if_command_recent(self, settings, db_session, mocker):
+        """Недавняя команда (< 120 с) — resend не шлётся."""
+        pc = await create_test_pc(db_session, name="hb_no_resend_pc")
+        pc.desired_locked = True
+        pc.desired_lock_reason = "schedule"
+        pc.last_command_at = datetime.now(timezone.utc) - timedelta(seconds=30)
+        await db_session.commit()
+        mqtt_mock = mocker.AsyncMock()
+
+        await pc_service.handle_heartbeat(db_session, mqtt_mock, settings, "hb_no_resend_pc", {"locked": False})
+        await db_session.commit()
+
+        mqtt_mock.send_pc_command.assert_not_called()
+
+    @pytest.mark.asyncio()
+    async def test_unknown_pc_does_not_crash(self, settings, db_session, mocker, caplog):
         """Heartbeat от неизвестного ПК должен логировать warning, а не падать."""
+        mqtt_mock = mocker.AsyncMock()
         payload = {"ts": "2026-08-21T10:00:00Z", "locked": False}
-        await pc_service.handle_heartbeat(db_session, settings, "unknown_pc", payload)
+
+        await pc_service.handle_heartbeat(db_session, mqtt_mock, settings, "unknown_pc", payload)
 
         assert any("unknown pc" in rec.message.lower() for rec in caplog.records)
+        mqtt_mock.send_pc_command.assert_not_called()
 
 
 class TestLockPc:
@@ -282,6 +326,21 @@ class TestLockPc:
         assert args[1]["action"] == "lock_in"
         assert args[1]["delay_seconds"] == 300
         assert args[1]["reason"] == "schedule"
+
+    @pytest.mark.asyncio()
+    async def test_lock_command_contains_info(self, settings, db_session, mocker):
+        """Lock-команда несёт данные для экрана блокировки."""
+        pc = await create_test_pc(db_session, name="info_pc")
+        mqtt_mock = mocker.AsyncMock()
+
+        await pc_service.lock_pc(db_session, mqtt_mock, settings, pc, reason="manual")
+
+        cmd = mqtt_mock.send_pc_command.call_args[0][1]
+        assert cmd["info"]["display_name"] == "info_pc"
+        assert cmd["info"]["reason"] == "manual"
+        assert cmd["info"]["reason_ru"] == "Компьютер заблокирован родителями"
+        assert cmd["info"]["next_window"] == "до конца дня"
+        assert cmd["info"]["unlocks_at"] is not None
 
     @pytest.mark.asyncio()
     async def test_manual_lock_sets_manual_lock_until(self, settings, db_session, mocker):
@@ -435,6 +494,7 @@ class TestAddTime:
         actions = [c[0][1]["action"] for c in mqtt_mock.send_pc_command.call_args_list]
         assert actions == ["add_time", "unlock"]
 
+
 class TestServerCommands:
     """Управление сервером через server/cmd."""
 
@@ -443,9 +503,7 @@ class TestServerCommands:
         pc = await create_test_pc(db_session, name="srv_lock_pc")
         mqtt_mock = mocker.AsyncMock()
 
-        await pc_service.handle_server_command(
-            db_session, mqtt_mock, settings, {"action": "lock", "pc": "srv_lock_pc"}
-        )
+        await pc_service.handle_server_command(db_session, mqtt_mock, settings, {"action": "lock", "pc": "srv_lock_pc"})
 
         assert pc.desired_locked is True
         assert mqtt_mock.send_pc_command.call_count == 1
@@ -472,20 +530,26 @@ class TestServerCommands:
         mqtt_mock = mocker.AsyncMock()
 
         await pc_service.handle_server_command(
-            db_session, mqtt_mock, settings,
+            db_session,
+            mqtt_mock,
+            settings,
             {"action": "add_time", "pc": "srv_time_pc", "minutes": 10},
         )
 
         cmd = mqtt_mock.send_pc_command.call_args[0][1]
         assert cmd == {"action": "add_time", "minutes": 10}
 
+        # Бонус реально начислился
+        usage = await pc_service.get_usage_today(db_session, settings, pc.id)
+        assert usage.bonus_seconds == 600
+
     @pytest.mark.asyncio()
     async def test_server_command_unknown_pc(self, settings, db_session, mocker):
+        """Неизвестный ПК — warning, без действий и падений."""
         mqtt_mock = mocker.AsyncMock()
-        # Не падает, просто warning
-        await pc_service.handle_server_command(
-            db_session, mqtt_mock, settings, {"action": "lock", "pc": "nope"}
-        )
+
+        await pc_service.handle_server_command(db_session, mqtt_mock, settings, {"action": "lock", "pc": "nope"})
+
         mqtt_mock.send_pc_command.assert_not_called()
 
     @pytest.mark.asyncio()
@@ -493,9 +557,8 @@ class TestServerCommands:
         pc = await create_test_pc(db_session, name="srv_bad_action_pc")
         mqtt_mock = mocker.AsyncMock()
 
-        await pc_service.handle_server_command(
-            db_session, mqtt_mock, settings, {"action": "reboot", "pc": pc.name}
-        )
+        await pc_service.handle_server_command(db_session, mqtt_mock, settings, {"action": "reboot", "pc": pc.name})
+
         mqtt_mock.send_pc_command.assert_not_called()
 
 
@@ -512,7 +575,9 @@ class TestBuildServerStatus:
         assert "status_pc" in status["pcs"]
         entry = status["pcs"]["status_pc"]
         assert entry["is_online"] is False
+        assert entry["is_idle"] is False
         assert entry["active_seconds"] == 0
+        assert entry["idle_seconds"] == 0
         assert entry["bonus_seconds"] == 0
         # лимит по умолчанию 120 мин → 7200 сек
-        assert entry["limit_seconds"] == 7200
+        assert entry["limit_seconds"] == pc.daily_limit_minutes * 60

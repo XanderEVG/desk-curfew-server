@@ -15,6 +15,7 @@ class PCRead(BaseModel):
     warning_before_lock_seconds: int
 
     is_active: bool
+    is_idle: bool
 
     is_online: bool
     is_locked: bool
@@ -61,6 +62,7 @@ class UsageToday(BaseModel):
 
     active_seconds: int
     locked_seconds: int
+    idle_seconds: int
     bonus_seconds: int
     limit_seconds: int
     usage_percent: float  # 0-100

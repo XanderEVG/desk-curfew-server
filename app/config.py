@@ -36,6 +36,7 @@ class Settings(BaseSettings):
 
     heartbeat_interval: int = 30
     heartbeat_timeout: int = 90
+    idle_threshold_seconds: int = 120  # сколько секунд без ввода считается «отошёл»
 
     default_pcs: str = "evgeny_pc,andrey_pc"
 

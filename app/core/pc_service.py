@@ -3,10 +3,10 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from zoneinfo import ZoneInfo
 
 from app.config import Settings
 from app.models import PC, CommandLog, PcEvent, ScheduleSlot, UsageDaily
@@ -82,6 +82,7 @@ def get_limit_minutes_for_day(pc: PC, weekday: str) -> int:
 
 async def handle_heartbeat(
     session: AsyncSession,
+    mqtt_service: MqttService,
     settings: Settings,
     pc_name: str,
     payload: dict[str, Any],
@@ -92,26 +93,41 @@ async def handle_heartbeat(
         return
 
     now = datetime.now(UTC)
-
     pc.is_online = True
     pc.last_seen_at = now
-
     active_user = payload.get("active_user")
     if active_user:
         pc.last_active_user = str(active_user)
 
     locked = bool(payload.get("locked", pc.is_locked))
     pc.is_locked = locked
-
     if payload.get("lock_reason") is not None:
         pc.lock_reason = str(payload.get("lock_reason"))
 
-    usage = await get_or_create_usage_today(session, settings, pc.id)
+    idle_seconds = _clamp_int(payload.get("idle_seconds"), 0, 0, 86400)
+    pc.is_idle = idle_seconds >= settings.idle_threshold_seconds
 
+    usage = await get_or_create_usage_today(session, settings, pc.id)
     if locked:
         usage.locked_seconds += settings.heartbeat_interval
+    elif pc.is_idle:
+        usage.idle_seconds += settings.heartbeat_interval
     else:
         usage.active_seconds += settings.heartbeat_interval
+
+    # Агент жив, но не заблокирован, хотя сервер хочет блокировку —
+    # повторяем команду сразу (троттлинг 120 с, как в планировщике).
+    if pc.desired_locked and not locked and (
+        pc.last_command_at is None or (now - pc.last_command_at).total_seconds() > 120
+    ):
+        await lock_pc(
+            session,
+            mqtt_service,
+            settings,
+            pc,
+            reason=pc.desired_lock_reason or "schedule",
+            delay_seconds=0,
+        )
 
 
 async def handle_status(
@@ -250,6 +266,8 @@ async def build_server_status(session: AsyncSession, settings: Settings) -> dict
             "active_seconds": usage.active_seconds if usage else 0,
             "locked_seconds": usage.locked_seconds if usage else 0,
             "bonus_seconds": bonus_seconds,
+            "is_idle": pc.is_idle,
+            "idle_seconds": usage.idle_seconds if usage else 0,
             # лимит на сегодня с учётом дня недели и бонуса
             "limit_seconds": limit_minutes * 60 + bonus_seconds,
         }
@@ -315,16 +333,19 @@ async def lock_pc(
     reason: str = "manual",
     delay_seconds: int = 0,
 ) -> None:
+    info = await build_lock_info(session, settings, pc, reason)
     if delay_seconds > 0:
         command = {
             "action": "lock_in",
             "delay_seconds": delay_seconds,
             "reason": reason,
+            "info": info,
         }
     else:
         command = {
             "action": "lock_now",
             "reason": reason,
+            "info": info,
         }
 
     await _send_command(session, mqtt_service, pc, command)
@@ -392,6 +413,7 @@ async def get_pc_with_usage_today(
     active_seconds = usage.active_seconds if usage else 0
     locked_seconds = usage.locked_seconds if usage else 0
     bonus_seconds = usage.bonus_seconds if usage else 0
+    idle_seconds = usage.idle_seconds if usage else 0
 
     weekday = WEEKDAY_NAMES[datetime.now(UTC).astimezone(ZoneInfo(settings.server_timezone)).weekday()]
     limit_seconds = get_limit_minutes_for_day(pc, weekday) * 60 + bonus_seconds
@@ -406,6 +428,7 @@ async def get_pc_with_usage_today(
             "active_seconds": active_seconds,
             "locked_seconds": locked_seconds,
             "bonus_seconds": bonus_seconds,
+            "idle_seconds": idle_seconds,
             "limit_seconds": limit_seconds,
             "usage_percent": min(usage_percent, 100.0),
         },
@@ -512,3 +535,68 @@ async def get_stats(session: AsyncSession, settings: Settings) -> dict:
         "locked_pcs": sum(1 for pc in pcs if pc.is_locked),
         "total_active_seconds_today": total_active_seconds,
     }
+
+
+LOCK_REASON_RU = {
+    "daily_limit": "Время за компьютером на сегодня закончилось",
+    "schedule": "Сейчас по расписанию — перерыв",
+    "manual": "Компьютер заблокирован родителями",
+}
+
+
+async def _next_allowed_window(
+    session: AsyncSession,
+    settings: Settings,
+    pc: PC,
+    local_now: datetime,
+    skip_today: bool = False,
+) -> dict | None:
+    """Ближайшее будущее разрешённое окно расписания."""
+    slots = [s for s in await get_pc_schedule(session, pc.id) if s.is_active]
+    if not slots:
+        return None
+    tz = ZoneInfo(settings.server_timezone)
+    for offset in range(1 if skip_today else 0, 8):
+        day = local_now.date() + timedelta(days=offset)
+        weekday = WEEKDAY_NAMES[day.weekday()]
+        for slot in sorted(slots, key=lambda s: s.allowed_from):
+            if weekday not in (slot.days or []):
+                continue
+            start = datetime.combine(day, slot.allowed_from, tzinfo=tz)
+            if offset == 0 and local_now >= start:
+                continue  # окно уже началось сегодня
+            return {
+                "label": f"{slot.allowed_from.strftime('%H:%M')}–{slot.allowed_until.strftime('%H:%M')}",
+                "start_iso": start.isoformat(),
+            }
+    return None
+
+
+async def build_lock_info(
+    session: AsyncSession,
+    settings: Settings,
+    pc: PC,
+    reason: str,
+) -> dict[str, Any]:
+    """Данные для экрана блокировки агента: сервер считает, агент рисует."""
+    local_now = datetime.now(UTC).astimezone(ZoneInfo(settings.server_timezone))
+    info: dict[str, Any] = {
+        "display_name": pc.display_name,
+        "reason": reason,
+        "reason_ru": LOCK_REASON_RU.get(reason, "Компьютер заблокирован"),
+        "locked_at": local_now.isoformat(),
+        "unlocks_at": None,
+        "next_window": None,
+    }
+    if reason == "manual":
+        info["unlocks_at"] = (pc.manual_lock_until or get_end_of_day(settings)).isoformat()
+        info["next_window"] = "до конца дня"
+        return info
+
+    window = await _next_allowed_window(session, settings, pc, local_now, skip_today=(reason == "daily_limit"))
+    if window is not None:
+        info["next_window"] = window["label"]
+        info["unlocks_at"] = window["start_iso"]
+    elif reason == "daily_limit":
+        info["next_window"] = "завтра"
+    return info

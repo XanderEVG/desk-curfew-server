@@ -177,6 +177,7 @@ python -m app.cli --help
 ```bash
 docker compose --profile test up -d test-db
 pytest tests/integration/ -v
+pytest -q
 ```
 
 ## Лицензия

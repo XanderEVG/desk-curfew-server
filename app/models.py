@@ -41,6 +41,7 @@ class PC(Base):
     warning_before_lock_seconds: Mapped[int] = mapped_column(Integer, default=300)
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_idle: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
 
     # Фактическое состояние, известное серверу
     is_online: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -122,6 +123,7 @@ class UsageDaily(Base):
 
     active_seconds: Mapped[int] = mapped_column(Integer, default=0)
     locked_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    idle_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
 
     bonus_seconds: Mapped[int] = mapped_column(
         Integer,

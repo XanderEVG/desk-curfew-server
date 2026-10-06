@@ -1,4 +1,5 @@
 """Интеграционные тесты API."""
+
 from collections.abc import AsyncGenerator
 from datetime import time
 
