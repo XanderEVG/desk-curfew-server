@@ -150,3 +150,34 @@ class StatsResponse(BaseModel):
     online_pcs: int
     locked_pcs: int
     total_active_seconds_today: int
+
+
+class AgentEventIn(BaseModel):
+    """Событие от агента в массиве heartbeat."""
+
+    event: str
+    reason: str | None = None
+
+
+class AgentHeartbeatRequest(BaseModel):
+    """Тело heartbeat от агента."""
+
+    locked: bool = False
+    lock_reason: str | None = None
+    idle_seconds: int = Field(default=0, ge=0, le=86400)
+    active_user: str | None = None
+    events: list[AgentEventIn] = Field(default_factory=list)
+
+
+class AgentHeartbeatResponse(BaseModel):
+    """Ответ сервера на heartbeat: команды для агента + серверное время."""
+
+    commands: list[dict]
+    server_time: datetime
+
+
+class AgentTokenResponse(BaseModel):
+    """Результат генерации токена агента (raw показывается один раз)."""
+
+    token: str
+    pc_name: str

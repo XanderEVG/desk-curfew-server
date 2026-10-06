@@ -12,7 +12,7 @@ from app.config import Settings
 from app.models import PC, CommandLog, PcEvent, ScheduleSlot, UsageDaily
 
 if TYPE_CHECKING:
-    from app.core.mqtt_client import MqttService
+    from app.core.agent_transport import AgentTransport
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +82,7 @@ def get_limit_minutes_for_day(pc: PC, weekday: str) -> int:
 
 async def handle_heartbeat(
     session: AsyncSession,
-    mqtt_service: MqttService,
+    transport: AgentTransport,
     settings: Settings,
     pc_name: str,
     payload: dict[str, Any],
@@ -117,12 +117,14 @@ async def handle_heartbeat(
 
     # Агент жив, но не заблокирован, хотя сервер хочет блокировку —
     # повторяем команду сразу (троттлинг 120 с, как в планировщике).
-    if pc.desired_locked and not locked and (
-        pc.last_command_at is None or (now - pc.last_command_at).total_seconds() > 120
+    if (
+        pc.desired_locked
+        and not locked
+        and (pc.last_command_at is None or (now - pc.last_command_at).total_seconds() > 120)
     ):
         await lock_pc(
             session,
-            mqtt_service,
+            transport,
             settings,
             pc,
             reason=pc.desired_lock_reason or "schedule",
@@ -195,7 +197,7 @@ def _clamp_int(value: Any, default: int, minimum: int, maximum: int) -> int:
 
 async def handle_server_command(
     session: AsyncSession,
-    mqtt_service: MqttService,
+    transport: AgentTransport,
     settings: Settings,
     payload: dict[str, Any],
 ) -> None:
@@ -217,17 +219,17 @@ async def handle_server_command(
     if action == "lock":
         await lock_pc(
             session,
-            mqtt_service,
+            transport,
             settings,
             pc,
             reason=str(payload.get("reason", "manual")),
             delay_seconds=_clamp_int(payload.get("delay_seconds"), 0, 0, 3600),
         )
     elif action == "unlock":
-        await unlock_pc(session, mqtt_service, settings, pc, reason="manual")
+        await unlock_pc(session, transport, settings, pc, reason="manual")
     elif action == "add_time":
         minutes = _clamp_int(payload.get("minutes"), 30, 1, 600)
-        await add_time(session, mqtt_service, settings, pc, minutes=minutes)
+        await add_time(session, transport, settings, pc, minutes=minutes)
     else:
         logger.warning("Unknown server command action: %r", action)
         return
@@ -308,11 +310,11 @@ async def is_allowed_now(
 
 async def _send_command(
     session: AsyncSession,
-    mqtt_service: MqttService,
+    transport: AgentTransport,
     pc: PC,
     command: dict[str, Any],
 ) -> None:
-    await mqtt_service.send_pc_command(pc.name, command)
+    await transport.send_pc_command(pc.name, command)
 
     session.add(
         CommandLog(
@@ -327,7 +329,7 @@ async def _send_command(
 
 async def lock_pc(
     session: AsyncSession,
-    mqtt_service: MqttService,
+    transport: AgentTransport,
     settings: Settings,
     pc: PC,
     reason: str = "manual",
@@ -348,7 +350,7 @@ async def lock_pc(
             "info": info,
         }
 
-    await _send_command(session, mqtt_service, pc, command)
+    await _send_command(session, transport, pc, command)
 
     pc.desired_locked = True
     pc.desired_lock_reason = reason
@@ -360,7 +362,7 @@ async def lock_pc(
 
 async def unlock_pc(
     session: AsyncSession,
-    mqtt_service: MqttService,
+    transport: AgentTransport,
     settings: Settings,
     pc: PC,
     reason: str = "manual",
@@ -370,7 +372,7 @@ async def unlock_pc(
         "reason": reason,
     }
 
-    await _send_command(session, mqtt_service, pc, command)
+    await _send_command(session, transport, pc, command)
 
     pc.desired_locked = False
     pc.desired_lock_reason = None
@@ -379,7 +381,7 @@ async def unlock_pc(
 
 async def add_time(
     session: AsyncSession,
-    mqtt_service: MqttService,
+    transport: AgentTransport,
     settings: Settings,
     pc: PC,
     minutes: int,
@@ -389,7 +391,7 @@ async def add_time(
         "action": "add_time",
         "minutes": minutes,
     }
-    await _send_command(session, mqtt_service, pc, command)
+    await _send_command(session, transport, pc, command)
 
     usage = await get_or_create_usage_today(session, settings, pc.id)
     usage.bonus_seconds += minutes * 60
@@ -400,7 +402,7 @@ async def add_time(
         weekday = WEEKDAY_NAMES[datetime.now(UTC).astimezone(ZoneInfo(settings.server_timezone)).weekday()]
         limit_seconds = get_limit_minutes_for_day(pc, weekday) * 60 + usage.bonus_seconds
         if usage.active_seconds < limit_seconds:
-            await unlock_pc(session, mqtt_service, settings, pc, reason="add_time")
+            await unlock_pc(session, transport, settings, pc, reason="add_time")
 
 
 async def get_pc_with_usage_today(

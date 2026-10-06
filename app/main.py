@@ -7,8 +7,9 @@ from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
 from starlette.responses import RedirectResponse
 
-from app.api.routers import auth, control, health, pcs, stats
+from app.api.routers import agent, auth, control, health, pcs, stats
 from app.config import get_settings
+from app.core.agent_transport import InMemoryAgentTransport
 from app.core.mqtt_client import MqttService
 from app.core.scheduler import run_scheduler
 from app.fastapi_app import CurfewApp
@@ -30,11 +31,14 @@ async def lifespan(app: CurfewApp):
     )
     logging.getLogger("app.core.mqtt_client").setLevel(logging.DEBUG)
 
-    mqtt_service = MqttService(settings)
+    agent_transport = InMemoryAgentTransport()
+    mqtt_service = MqttService(settings, agent_transport)
+
     await mqtt_service.start()
 
-    scheduler_task = asyncio.create_task(run_scheduler(settings, mqtt_service))
+    scheduler_task = asyncio.create_task(run_scheduler(settings, agent_transport))
 
+    app.agent_transport = agent_transport
     app.mqtt = mqtt_service
     app.settings = settings
 
@@ -64,6 +68,7 @@ app.include_router(pcs.router)
 app.include_router(control.router)
 app.include_router(auth.router)
 app.include_router(stats.router)
+app.include_router(agent.router)
 app.include_router(web_router)
 
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")

@@ -5,16 +5,18 @@ from datetime import datetime
 from functools import partial
 from pathlib import Path
 from typing import Annotated
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from zoneinfo import ZoneInfo
 
 from app.config import get_settings
 from app.core import pc_service
+from app.core.agent_auth import generate_agent_token, hash_agent_token
+from app.core.agent_transport import AgentTransport
 from app.core.auth import (
     authenticate_user,
     create_session,
@@ -22,10 +24,9 @@ from app.core.auth import (
     get_current_user,
     set_session_cookie,
 )
-from app.core.mqtt_client import MqttService
 from app.core.pc_service import WEEKDAY_NAMES  # к импортам
 from app.database import get_db
-from app.deps import get_mqtt_service
+from app.deps import get_agent_transport
 from app.models import PC, Session, User
 
 DAYS_OF_WEEK = list(zip(WEEKDAY_NAMES, ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"], strict=True))
@@ -110,7 +111,7 @@ async def get_web_user(
 
 WebUser = Annotated[User, Depends(get_web_user)]
 WebDb = Annotated[AsyncSession, Depends(get_db)]
-MqttDep = Annotated[MqttService, Depends(get_mqtt_service)]
+TransportDep = Annotated[AgentTransport, Depends(get_agent_transport)]
 
 
 # === Хелперы ===
@@ -209,18 +210,18 @@ async def pc_grid_partial(request: Request, user: WebUser, db: WebDb):
 
 
 @router.post("/web/pcs/{pc_name}/lock", response_class=HTMLResponse)
-async def web_lock(pc_name: str, request: Request, user: WebUser, db: WebDb, mqtt: MqttDep):
+async def web_lock(pc_name: str, request: Request, user: WebUser, db: WebDb, transport: TransportDep):
     pc = await _get_pc_or_404(db, pc_name)
-    await pc_service.lock_pc(db, mqtt, get_settings(), pc, reason="manual", delay_seconds=0)
+    await pc_service.lock_pc(db, transport, get_settings(), pc, reason="manual", delay_seconds=0)
     await db.commit()
     response = await _grid_response(request, db)
     return _with_toast(response, f"{pc.display_name}: Команда блокировки отправлена")
 
 
 @router.post("/web/pcs/{pc_name}/unlock", response_class=HTMLResponse)
-async def web_unlock(pc_name: str, request: Request, user: WebUser, db: WebDb, mqtt: MqttDep):
+async def web_unlock(pc_name: str, request: Request, user: WebUser, db: WebDb, transport: TransportDep):
     pc = await _get_pc_or_404(db, pc_name)
-    await pc_service.unlock_pc(db, mqtt, get_settings(), pc, reason="manual")
+    await pc_service.unlock_pc(db, transport, get_settings(), pc, reason="manual")
     await db.commit()
     response = await _grid_response(request, db)
     return _with_toast(response, f"{pc.display_name}: Команда разблокировки отправлена")
@@ -232,11 +233,11 @@ async def web_add_time(
     request: Request,
     user: WebUser,
     db: WebDb,
-    mqtt: MqttDep,
+    transport: TransportDep,
     minutes: Annotated[int, Form(ge=1, le=600)] = 30,
 ):
     pc = await _get_pc_or_404(db, pc_name)
-    await pc_service.add_time(db, mqtt, get_settings(), pc, minutes=minutes)
+    await pc_service.add_time(db, transport, get_settings(), pc, minutes=minutes)
     await db.commit()
     response = await _grid_response(request, db)
     return _with_toast(response, f"{pc.display_name}: +{minutes} мин")
@@ -349,3 +350,21 @@ async def commands_partial(
     pc = await _get_pc_or_404(db, pc_name)
     ctx = await _history_context(db, pc, partial(pc_service.get_pc_commands, db), offset, limit)
     return templates.TemplateResponse(request, "partials/commands_table.html", ctx)
+
+
+@router.post("/web/pcs/{pc_name}/agent-token/generate")
+async def web_generate_agent_token(
+    pc_name: str,
+    request: Request,
+    user: WebUser,
+    db: WebDb,
+):
+    """Генерирует новый токен агента и показывает его один раз."""
+    pc = await _get_pc_or_404(db, pc_name)
+    raw_token = generate_agent_token()
+    pc.agent_token_hash = hash_agent_token(raw_token)
+    await db.commit()
+    return RedirectResponse(
+        f"/pcs/{pc_name}?toast=token_generated&agent_token={raw_token}",
+        status_code=303,
+    )

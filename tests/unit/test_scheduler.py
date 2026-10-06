@@ -58,15 +58,15 @@ class TestProcessPc:
         """Вне разрешённого окна планировщик блокирует по расписанию."""
         pc = await create_online_pc(db_session)
         await add_restrictive_slot(db_session, pc.id)
-        mqtt_mock = mocker.AsyncMock()
+        transport_mock = mocker.AsyncMock()
         now_utc, local_now = make_now()
 
-        await process_pc(db_session, settings, mqtt_mock, pc, now_utc, local_now)
+        await process_pc(db_session, settings, transport_mock, pc, now_utc, local_now)
 
         assert pc.desired_locked is True
         assert pc.desired_lock_reason == "schedule"
-        mqtt_mock.send_pc_command.assert_called_once()
-        cmd = mqtt_mock.send_pc_command.call_args[0][1]
+        transport_mock.send_pc_command.assert_called_once()
+        cmd = transport_mock.send_pc_command.call_args[0][1]
         assert cmd["action"] == "lock_in"  # warning_before_lock_seconds > 0
 
     @pytest.mark.asyncio()
@@ -89,16 +89,16 @@ class TestProcessPc:
         await db_session.commit()
 
         now_utc, local_now = make_now()
-        mqtt_mock = mocker.AsyncMock()
+        transport_mock = mocker.AsyncMock()
 
-        await process_pc(db_session, settings, mqtt_mock, pc, now_utc, local_now)
+        await process_pc(db_session, settings, transport_mock, pc, now_utc, local_now)
         await db_session.commit()
         await db_session.refresh(pc)
 
         assert pc.desired_locked is True
         assert pc.desired_lock_reason == "daily_limit"
-        mqtt_mock.send_pc_command.assert_called_once()
-        call_args = mqtt_mock.send_pc_command.call_args[0]
+        transport_mock.send_pc_command.assert_called_once()
+        call_args = transport_mock.send_pc_command.call_args[0]
         assert call_args[1]["action"] == "lock_in"
         assert call_args[1]["reason"] == "daily_limit"
 
@@ -112,14 +112,14 @@ class TestProcessPc:
         # manual_lock_until в будущем
         pc.manual_lock_until = now_utc + timedelta(hours=5)
         await db_session.commit()
-        mqtt_mock = mocker.AsyncMock()
+        transport_mock = mocker.AsyncMock()
 
-        await process_pc(db_session, settings, mqtt_mock, pc, now_utc, local_now)
+        await process_pc(db_session, settings, transport_mock, pc, now_utc, local_now)
 
         # Расписание разрешает (нет слотов) → should_lock=False,
         # но reason=manual → unlock НЕ вызывается
         assert pc.desired_locked is True
-        mqtt_mock.send_pc_command.assert_not_called()
+        transport_mock.send_pc_command.assert_not_called()
 
     @pytest.mark.asyncio()
     async def test_schedule_lock_released(self, settings, db_session, mocker):
@@ -128,13 +128,13 @@ class TestProcessPc:
         pc.desired_locked = True
         pc.desired_lock_reason = "schedule"
         await db_session.commit()
-        mqtt_mock = mocker.AsyncMock()
+        transport_mock = mocker.AsyncMock()
         now_utc, local_now = make_now()
 
-        await process_pc(db_session, settings, mqtt_mock, pc, now_utc, local_now)
+        await process_pc(db_session, settings, transport_mock, pc, now_utc, local_now)
 
         assert pc.desired_locked is False
-        cmd = mqtt_mock.send_pc_command.call_args[0][1]
+        cmd = transport_mock.send_pc_command.call_args[0][1]
         assert cmd["action"] == "unlock"
 
     @pytest.mark.asyncio()
@@ -143,12 +143,12 @@ class TestProcessPc:
         pc = await create_online_pc(db_session)
         pc.is_online = False
         await db_session.commit()
-        mqtt_mock = mocker.AsyncMock()
+        transport_mock = mocker.AsyncMock()
         now_utc, local_now = make_now()
 
-        await process_pc(db_session, settings, mqtt_mock, pc, now_utc, local_now)
+        await process_pc(db_session, settings, transport_mock, pc, now_utc, local_now)
 
-        mqtt_mock.send_pc_command.assert_not_called()
+        transport_mock.send_pc_command.assert_not_called()
 
     @pytest.mark.asyncio()
     async def test_heartbeat_timeout_marks_offline(self, settings, db_session, mocker):
@@ -158,12 +158,12 @@ class TestProcessPc:
         # last_seen_at = 200 секунд назад (timeout 90)
         pc.last_seen_at = now_utc - timedelta(seconds=200)
         await db_session.commit()
-        mqtt_mock = mocker.AsyncMock()
+        transport_mock = mocker.AsyncMock()
 
-        await process_pc(db_session, settings, mqtt_mock, pc, now_utc, local_now)
+        await process_pc(db_session, settings, transport_mock, pc, now_utc, local_now)
 
         assert pc.is_online is False
-        mqtt_mock.send_pc_command.assert_not_called()
+        transport_mock.send_pc_command.assert_not_called()
 
 
 class TestDayLimitsAndBonus:
@@ -190,9 +190,9 @@ class TestDayLimitsAndBonus:
         await db_session.commit()
 
         now_utc, local = make_now()
-        mqtt_mock = mocker.AsyncMock()
+        transport_mock = mocker.AsyncMock()
 
-        await process_pc(db_session, settings, mqtt_mock, pc, now_utc, local)
+        await process_pc(db_session, settings, transport_mock, pc, now_utc, local)
 
         assert pc.desired_locked is True
         assert pc.desired_lock_reason == "daily_limit"
@@ -216,9 +216,9 @@ class TestDayLimitsAndBonus:
         await db_session.commit()
 
         now_utc, local_now = make_now()
-        mqtt_mock = mocker.AsyncMock()
+        transport_mock = mocker.AsyncMock()
 
-        await process_pc(db_session, settings, mqtt_mock, pc, now_utc, local_now)
+        await process_pc(db_session, settings, transport_mock, pc, now_utc, local_now)
 
         assert pc.desired_locked is False
-        mqtt_mock.send_pc_command.assert_not_called()
+        transport_mock.send_pc_command.assert_not_called()

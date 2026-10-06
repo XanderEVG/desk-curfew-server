@@ -5,9 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.core import pc_service
-from app.core.mqtt_client import MqttService
+from app.core.agent_transport import AgentTransport
 from app.database import get_db
-from app.deps import get_mqtt_service
+from app.deps import get_agent_transport
 from app.schemas import AddTimeRequest, LockRequest, MessageResponse
 
 router = APIRouter(prefix="/api/pcs", tags=["control"])
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/pcs", tags=["control"])
 async def lock_pc(
     pc_name: str,
     db: Annotated[AsyncSession, Depends(get_db)],
-    mqtt_service: Annotated[MqttService, Depends(get_mqtt_service)],
+    transport: Annotated[AgentTransport, Depends(get_agent_transport)],
     payload: LockRequest | None = None,
 ):
     settings = get_settings()
@@ -31,7 +31,7 @@ async def lock_pc(
 
     await pc_service.lock_pc(
         db,
-        mqtt_service,
+        transport,
         settings,
         pc,
         reason=reason,
@@ -47,7 +47,7 @@ async def lock_pc(
 async def unlock_pc(
     pc_name: str,
     db: Annotated[AsyncSession, Depends(get_db)],
-    mqtt_service: Annotated[MqttService, Depends(get_mqtt_service)],
+    transport: Annotated[AgentTransport, Depends(get_agent_transport)],
 ):
     settings = get_settings()
 
@@ -57,7 +57,7 @@ async def unlock_pc(
 
     await pc_service.unlock_pc(
         db,
-        mqtt_service,
+        transport,
         settings,
         pc,
         reason="manual",
@@ -72,7 +72,7 @@ async def unlock_pc(
 async def add_time(
     pc_name: str,
     db: Annotated[AsyncSession, Depends(get_db)],
-    mqtt_service: Annotated[MqttService, Depends(get_mqtt_service)],
+    transport: Annotated[AgentTransport, Depends(get_agent_transport)],
     payload: AddTimeRequest | None = None,
 ):
     settings = get_settings()
@@ -83,7 +83,7 @@ async def add_time(
 
     await pc_service.add_time(
         db,
-        mqtt_service,
+        transport,
         settings,
         pc,
         minutes=payload.minutes if payload else 10,

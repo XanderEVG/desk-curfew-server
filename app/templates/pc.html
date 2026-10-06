@@ -67,6 +67,30 @@
 </section>
 
 <section>
+  <h5>Токен агента</h5>
+  {% if toast == 'token_generated' %}
+  <div class="token-display">
+    <p><strong>Новый токен сгенерирован!</strong> Скопируйте и сохраните в конфиг агента:</p>
+    <code class="token-value">{{ request.query_params.get('agent_token', '') }}</code>
+    <p class="muted"><small>Токен показывается только один раз. Если потеряли — перегенерируйте.</small></p>
+  </div>
+  {% endif %}
+  <p>
+    {% if pc.agent_token_hash %}
+    Токен настроен.
+    {% else %}
+    Токен не настроен. Сгенерируйте токен и добавьте его в конфиг агента.
+    {% endif %}
+  </p>
+  <form method="post" action="/web/pcs/{{ pc.name }}/agent-token/generate" style="display: inline;">
+    <button type="submit" class="secondary"
+            onclick="return confirm('{% if pc.agent_token_hash %}Перегенерировать токен? Старый токен перестанет работать.{% else %}Сгенерировать токен для агента?{% endif %}')">
+      {% if pc.agent_token_hash %}Перегенерировать токен{% else %}Сгенерировать токен{% endif %}
+    </button>
+  </form>
+</section>
+
+<section>
   <h5>Расписание</h5>
   <div id="schedule-editor" data-pc="{{ pc.name }}">
     {% for slot in schedule %}

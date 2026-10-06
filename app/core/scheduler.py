@@ -3,37 +3,37 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
+from zoneinfo import ZoneInfo
 
 from app.config import Settings
 from app.core import pc_service
-from app.core.mqtt_client import MqttService
+from app.core.agent_transport import AgentTransport
 from app.database import AsyncSessionLocal
 from app.models import PC
 
 logger = logging.getLogger(__name__)
 
 
-async def run_scheduler(settings: Settings, mqtt_service: MqttService) -> None:
+async def run_scheduler(settings: Settings, transport: AgentTransport) -> None:
     await asyncio.sleep(5)
 
     while True:
         try:
-            await tick(settings, mqtt_service)
+            await tick(settings, transport)
         except Exception:
             logger.exception("Scheduler tick failed")
 
         await asyncio.sleep(30)
 
 
-async def tick(settings: Settings, mqtt_service: MqttService) -> None:
+async def tick(settings: Settings, transport: AgentTransport) -> None:
     async with AsyncSessionLocal() as session:
-        await tick_with_session(session, settings, mqtt_service)
+        await tick_with_session(session, settings, transport)
 
 
-async def tick_with_session(session, settings: Settings, mqtt_service: MqttService) -> None:
+async def tick_with_session(session, settings: Settings, transport: AgentTransport) -> None:
     now_utc = datetime.now(timezone.utc)
     local_now = now_utc.astimezone(ZoneInfo(settings.server_timezone))
 
@@ -41,7 +41,7 @@ async def tick_with_session(session, settings: Settings, mqtt_service: MqttServi
     pcs = result.all()
 
     for pc in pcs:
-        await process_pc(session, settings, mqtt_service, pc, now_utc, local_now)
+        await process_pc(session, settings, transport, pc, now_utc, local_now)
 
     await session.commit()
 
@@ -49,7 +49,7 @@ async def tick_with_session(session, settings: Settings, mqtt_service: MqttServi
 async def process_pc(
     session,
     settings: Settings,
-    mqtt_service: MqttService,
+    transport: AgentTransport,
     pc: PC,
     now_utc: datetime,
     local_now: datetime,
@@ -75,7 +75,7 @@ async def process_pc(
         and now_utc >= pc.manual_lock_until
     ):
         logger.info("Manual lock expired for PC %s, unlocking", pc.name)
-        await pc_service.unlock_pc(session, mqtt_service, settings, pc, reason="manual_lock_expired")
+        await pc_service.unlock_pc(session, transport, settings, pc, reason="manual_lock_expired")
 
     usage = await pc_service.get_usage_today(session, settings, pc.id)
     active_seconds = usage.active_seconds if usage else 0
@@ -95,7 +95,7 @@ async def process_pc(
         logger.info("Locking PC %s by reason %s", pc.name, reason)
         await pc_service.lock_pc(
             session,
-            mqtt_service,
+            transport,
             settings,
             pc,
             reason=reason,
@@ -109,7 +109,7 @@ async def process_pc(
                 pc.name,
                 pc.desired_lock_reason,
             )
-            await pc_service.unlock_pc(session, mqtt_service, settings, pc, reason="scheduler")
+            await pc_service.unlock_pc(session, transport, settings, pc, reason="scheduler")
 
     elif pc.desired_locked and not pc.is_locked:
         if pc.last_command_at and now_utc - pc.last_command_at > timedelta(seconds=120):
@@ -119,7 +119,7 @@ async def process_pc(
             )
             await pc_service.lock_pc(
                 session,
-                mqtt_service,
+                transport,
                 settings,
                 pc,
                 reason=pc.desired_lock_reason or "schedule",

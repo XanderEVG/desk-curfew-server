@@ -66,6 +66,9 @@ class PC(Base):
     )
     last_active_user: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
+    # Bearer-токен для HTTP-поллинга агента (bcrypt-хеш; raw показывается один раз при генерации).
+    agent_token_hash: Mapped[str | None] = mapped_column(String(256), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

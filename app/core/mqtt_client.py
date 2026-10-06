@@ -1,3 +1,13 @@
+"""MQTT-клиент для внешних интеграций.
+
+Отвечает ТОЛЬКО за:
+  - публикацию `server/status` (retained, обновление каждые 60 с);
+  - подписку на `server/cmd` (внешнее управление: lock/unlock/add_time).
+
+Агенты общаются с сервером по HTTP (`/api/agent/hb`), транспорт для команд —
+`AgentTransport` (in-memory очередь).
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -11,20 +21,22 @@ import paho.mqtt.client as mqtt
 
 from app.config import Settings
 from app.core import pc_service
+from app.core.agent_transport import AgentTransport
 from app.database import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
 
 
 class MqttService:
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, transport: AgentTransport):
         self.settings = settings
+        self.transport = transport
         self.loop: asyncio.AbstractEventLoop | None = None
         self._publish_lock = asyncio.Lock()
         self._last_publish = 0.0
         self._status_task: asyncio.Task | None = None
         self.client = mqtt.Client(
-            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+            callback_api_version=mqtt.CallbackApiVersion.VERSION2,
             client_id=settings.mqtt_client_id,
             transport=settings.mqtt_transport,
         )
@@ -48,6 +60,9 @@ class MqttService:
 
     def _server_status_topic(self) -> str:
         return f"{self.settings.mqtt_topic_prefix}/server/status"
+
+    def _server_cmd_topic(self) -> str:
+        return f"{self.settings.mqtt_topic_prefix}/server/cmd"
 
     async def start(self) -> None:
         self.loop = asyncio.get_running_loop()
@@ -96,16 +111,8 @@ class MqttService:
         if reason_code.is_failure:
             logger.error("MQTT connection failed: %s", reason_code)
             return
-        prefix = self.settings.mqtt_topic_prefix
-        subscriptions = (
-            f"{prefix}/+/hb",
-            f"{prefix}/+/status",
-            f"{prefix}/+/event",
-            f"{prefix}/server/cmd",
-        )
-        for topic in subscriptions:
-            client.subscribe(topic, qos=1)
-            logger.info("Subscribed to %s", topic)
+        client.subscribe(self._server_cmd_topic(), qos=1)
+        logger.info("Subscribed to %s", self._server_cmd_topic())
         self._schedule_coroutine(self._publish_server_status(True))
 
     def _on_disconnect(self, client, userdata, flags, reason_code, properties) -> None:
@@ -129,45 +136,17 @@ class MqttService:
             logger.warning("Invalid JSON payload from topic %s", topic)
             return
 
-        prefix = self.settings.mqtt_topic_prefix
-        if not topic.startswith(prefix + "/"):
+        if topic == self._server_cmd_topic():
+            async with AsyncSessionLocal() as session:
+                try:
+                    await pc_service.handle_server_command(session, self.transport, self.settings, payload)
+                    await session.commit()
+                except Exception:
+                    await session.rollback()
+                    logger.exception("Failed to handle server command")
             return
 
-        suffix = topic[len(prefix) + 1 :]
-        parts = suffix.split("/")
-        if len(parts) < 2:
-            return
-
-        pc_name = parts[0]
-        kind = parts[1]
-
-        if pc_name == "server":
-            # Служебные топики самого сервера
-            if kind == "cmd":
-                async with AsyncSessionLocal() as session:
-                    try:
-                        await pc_service.handle_server_command(session, self, self.settings, payload)
-                        await session.commit()
-                    except Exception:
-                        await session.rollback()
-                        logger.exception("Failed to handle server command")
-            else:
-                # status/hb/event от сервера — это наши же retained, игнорируем
-                logger.debug("Ignoring server's own %s message", kind)
-            return
-
-        async with AsyncSessionLocal() as session:
-            try:
-                if kind == "hb":
-                    await pc_service.handle_heartbeat(session, self, self.settings, pc_name, payload)
-                elif kind == "status":
-                    await pc_service.handle_status(session, pc_name, payload)
-                elif kind == "event":
-                    await pc_service.handle_event(session, pc_name, payload)
-                await session.commit()
-            except Exception:
-                await session.rollback()
-                logger.exception("Failed to handle MQTT message from %s", topic)
+        logger.debug("Ignoring unexpected topic %s", topic)
 
     async def _publish_server_status(self, online: bool = True) -> None:
         if online:
@@ -200,8 +179,3 @@ class MqttService:
                 retain=retain,
             )
             self._last_publish = time.monotonic()
-
-    async def send_pc_command(self, pc_name: str, command: dict) -> None:
-        topic = f"{self.settings.mqtt_topic_prefix}/{pc_name}/cmd"
-        await self.publish_json(topic, command)
-        logger.info("Command sent to %s: %s", pc_name, command)

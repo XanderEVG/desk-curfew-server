@@ -201,14 +201,14 @@ class TestControlApi:
     @pytest.mark.asyncio()
     async def test_lock_pc(self, test_client, admin_user, test_pc, mocker):
         """POST /api/pcs/{name}/lock отправляет команду."""
-        # Мокаем MQTT-сервис
-        from app.deps import get_mqtt_service
+        # Мокаем транспорт
+        from app.deps import get_agent_transport
 
-        mqtt_mock = mocker.AsyncMock()
+        transport_mock = mocker.AsyncMock()
 
         # Получаем app из клиента и переопределяем зависимость
         app = test_client._transport.app  # type: ignore
-        app.dependency_overrides[get_mqtt_service] = lambda: mqtt_mock
+        app.dependency_overrides[get_agent_transport] = lambda: transport_mock
 
         await test_client.post(
             "/auth/login",
@@ -220,16 +220,16 @@ class TestControlApi:
         assert response.json()["ok"] is True
 
         # Проверяем, что команда отправлена
-        mqtt_mock.send_pc_command.assert_called_once()
+        transport_mock.send_pc_command.assert_called_once()
 
     @pytest.mark.asyncio()
     async def test_unlock_pc(self, test_client, admin_user, test_pc, mocker):
         """POST /api/pcs/{name}/unlock отправляет команду разблокировки."""
-        from app.deps import get_mqtt_service
+        from app.deps import get_agent_transport
 
-        mqtt_mock = mocker.AsyncMock()
+        transport_mock = mocker.AsyncMock()
         app = test_client._transport.app  # type: ignore
-        app.dependency_overrides[get_mqtt_service] = lambda: mqtt_mock
+        app.dependency_overrides[get_agent_transport] = lambda: transport_mock
 
         await test_client.post(
             "/auth/login",
@@ -239,7 +239,7 @@ class TestControlApi:
         response = await test_client.post(f"/api/pcs/{test_pc.name}/unlock")
         assert response.status_code == 200
 
-        args = mqtt_mock.send_pc_command.call_args[0]
+        args = transport_mock.send_pc_command.call_args[0]
         assert args[1]["action"] == "unlock"
 
 
