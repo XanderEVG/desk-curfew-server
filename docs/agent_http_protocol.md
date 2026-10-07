@@ -145,14 +145,19 @@ Authorization: Bearer <agent_token>
 
 Сервер обрабатывает каждый hb:
 
-1. Обновляет `is_online`, `last_seen_at`, `last_active_user`.
-2. `idle_seconds >= порога (120 с)` → `is_idle = true`, капает `idle_seconds`.
-3. `locked = true` → капает `locked_seconds`.
-4. Иначе → капает `active_seconds` (тратится дневной лимит).
-5. Обрабатывает `events` (обновляет `is_locked` по `locked`/`unlocked`).
-6. Если `desired_locked=true`, но агент шлёт `locked=false` и последняя
+1. Вычисляет **реальный интервал** между hb: `interval = now - last_seen_at`
+   (ограничен 1–300 сек). Первый hb использует `heartbeat_interval` (30 с).
+2. Обновляет `is_online`, `last_seen_at`, `last_active_user`.
+3. `idle_seconds >= порога (120 с)` → `is_idle = true`, капает `idle_seconds`.
+4. `locked = true` → капает `locked_seconds`.
+5. Иначе → капает `active_seconds` (тратится дневной лимит).
+6. Обрабатывает `events` (обновляет `is_locked` по `locked`/`unlocked`).
+7. Если `desired_locked=true`, но агент шлёт `locked=false` и последняя
    команда старше 120 с → немедленно кладёт `lock_now` в очередь
    (следующий hb заберёт).
+
+**Важно:** сервер начисляет реальные секунды между hb, а не константу.
+Если агент шлёт каждые 10 с — сервер начислит 10 с за каждый hb.
 
 ## Оффлайн
 
