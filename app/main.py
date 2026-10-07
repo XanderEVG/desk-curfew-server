@@ -1,11 +1,12 @@
 import asyncio
 import logging
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
-from starlette.responses import RedirectResponse
+from starlette.responses import RedirectResponse, Response
 
 from app.api.routers import agent, auth, control, health, pcs, stats
 from app.config import get_settings
@@ -22,7 +23,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 
 @asynccontextmanager
-async def lifespan(app: CurfewApp):
+async def lifespan(app: CurfewApp) -> AsyncGenerator[None, None]:
     settings = get_settings()
 
     logging.basicConfig(
@@ -75,5 +76,5 @@ app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 
 @app.exception_handler(LoginRequiredError)
-async def login_required_handler(request: Request, exc: LoginRequiredError):
+async def login_required_handler(request: Request, exc: LoginRequiredError) -> Response:
     return RedirectResponse("/login", status_code=303)
