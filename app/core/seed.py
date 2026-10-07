@@ -6,6 +6,7 @@ import yaml
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.agent_auth import generate_agent_token, hash_agent_token
 from app.models import PC, ScheduleSlot
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,11 @@ async def seed_pcs(session: AsyncSession) -> None:
             daily_limit_minutes=pc_data.get("daily_limit_minutes", 120),
             warning_before_lock_seconds=pc_data.get("warning_before_lock_seconds", 300),
         )
+        
+        # Генерация токена агента
+        raw_token = generate_agent_token()
+        pc.agent_token_hash = hash_agent_token(raw_token)
+        
         session.add(pc)
         await session.flush()
 
@@ -53,5 +59,6 @@ async def seed_pcs(session: AsyncSession) -> None:
             )
 
         logger.info("Created PC %s with schedule", name)
+        logger.info("Agent token for %s: %s", name, raw_token)
 
     await session.commit()
