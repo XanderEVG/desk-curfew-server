@@ -28,7 +28,13 @@ async def seed_pcs(session: AsyncSession) -> None:
         existing = await session.scalar(select(PC).where(PC.name == name))
 
         if existing:
-            logger.info("PC %s already exists, skipping", name)
+            # Если ПК существует, но токена нет — сгенерировать
+            if not existing.agent_token_hash:
+                raw_token = generate_agent_token()
+                existing.agent_token_hash = hash_agent_token(raw_token)
+                logger.info("Generated agent token for existing PC %s: %s", name, raw_token)
+            else:
+                logger.info("PC %s already exists, skipping", name)
             continue
 
         pc = PC(
@@ -41,7 +47,7 @@ async def seed_pcs(session: AsyncSession) -> None:
         # Генерация токена агента
         raw_token = generate_agent_token()
         pc.agent_token_hash = hash_agent_token(raw_token)
-        
+
         session.add(pc)
         await session.flush()
 
