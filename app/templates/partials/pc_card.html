@@ -9,10 +9,9 @@
       <span class="badge {% if pc.is_online %}online{% else %}offline{% endif %}">
         {{ 'Онлайн' if pc.is_online else 'Оффлайн' }}
       </span>
-      {% if pc.is_locked %}<span class="badge locked">Заблокирован</span>{% endif %}
-      {% if pc.desired_locked and not pc.is_locked %}
-      <span class="badge pending">Ожидает блокировки</span>
-      {% endif %}
+      {% if pc.is_locked and pc.desired_locked %}<span class="badge locked">Заблокирован</span>{% endif %}
+      {% if pc.is_locked and not pc.desired_locked %}<span class="badge pending">Ожидает разблокировки</span>{% endif %}
+      {% if not pc.is_locked and pc.desired_locked %}<span class="badge pending">Ожидает блокировки</span>{% endif %}
       {% if pc.is_idle and pc.is_online and not pc.is_locked %}
       <span class="badge idle">Отошёл</span>
       {% endif %}
