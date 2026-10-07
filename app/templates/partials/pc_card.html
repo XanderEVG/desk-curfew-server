@@ -19,11 +19,11 @@
     </div>
   </header>
 
-  <p class="muted">
-    {{ pc.name }}
-    {% if pc.last_active_user %} · пользователь: {{ pc.last_active_user }}{% endif %}
-    {% if pc.last_seen_at %} · был в сети: {{ pc.last_seen_at | fmt_dt }}{% endif %}
-  </p>
+  <div class="pc-info">
+    <div>{{ pc.name }}</div>
+    {% if pc.last_active_user %}<div>Пользователь: {{ pc.last_active_user }}</div>{% endif %}
+    {% if pc.last_seen_at %}<div>Был в сети: {{ pc.last_seen_at | fmt_dt }}</div>{% endif %}
+  </div>
 
   <div class="progress">
     <div class="progress-bar
@@ -40,13 +40,13 @@
   <footer>
     <button hx-post="/web/pcs/{{ pc.name }}/lock"
             hx-target="#pc-grid" hx-swap="innerHTML"
-            {% if pc.desired_locked %}disabled{% endif %}>
+            {% if pc.is_locked or pc.desired_locked %}disabled{% endif %}>
       Заблокировать
     </button>
     <button class="secondary"
             hx-post="/web/pcs/{{ pc.name }}/unlock"
             hx-target="#pc-grid" hx-swap="innerHTML"
-            {% if not pc.desired_locked %}disabled{% endif %}>
+            {% if not pc.is_locked and not pc.desired_locked %}disabled{% endif %}>
       Разблокировать
     </button>
 
