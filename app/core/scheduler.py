@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
-from zoneinfo import ZoneInfo
 
 from app.config import Settings
 from app.core import pc_service

@@ -6,7 +6,7 @@ from app.core.agent_transport import InMemoryAgentTransport
 
 
 class TestInMemoryAgentTransport:
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_enqueue_and_drain(self):
         """Команды накапливаются и отдаются по drain."""
         transport = InMemoryAgentTransport()
@@ -19,7 +19,7 @@ class TestInMemoryAgentTransport:
         assert commands[0]["action"] == "lock_now"
         assert commands[1]["action"] == "add_time"
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_drain_clears_queue(self):
         """drain очищает очередь."""
         transport = InMemoryAgentTransport()
@@ -30,7 +30,7 @@ class TestInMemoryAgentTransport:
         commands = transport.drain("pc1")
         assert commands == []
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_drain_unknown_pc_returns_empty(self):
         """drain для неизвестного ПК возвращает пустой список."""
         transport = InMemoryAgentTransport()
@@ -38,7 +38,7 @@ class TestInMemoryAgentTransport:
         commands = transport.drain("unknown_pc")
         assert commands == []
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_separate_queues_per_pc(self):
         """Очереди для разных ПК независимы."""
         transport = InMemoryAgentTransport()

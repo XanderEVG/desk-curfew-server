@@ -5,13 +5,13 @@ from datetime import datetime
 from functools import partial
 from pathlib import Path
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from zoneinfo import ZoneInfo
 
 from app.config import get_settings
 from app.core import pc_service
@@ -171,7 +171,7 @@ async def login_submit(
     session = await create_session(
         db,
         user,
-        ip_address=request.client.host,
+        ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
     response = RedirectResponse("/", status_code=303)

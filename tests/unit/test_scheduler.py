@@ -1,9 +1,9 @@
 """Тесты для логики планировщика."""
 
 from datetime import datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
-from zoneinfo import ZoneInfo
 
 from app.core.pc_service import WEEKDAY_NAMES
 from app.core.scheduler import process_pc
@@ -53,7 +53,7 @@ async def add_restrictive_slot(session, pc_id):
 
 
 class TestProcessPc:
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_lock_by_schedule(self, settings, db_session, mocker):
         """Вне разрешённого окна планировщик блокирует по расписанию."""
         pc = await create_online_pc(db_session)
@@ -69,7 +69,7 @@ class TestProcessPc:
         cmd = transport_mock.send_pc_command.call_args[0][1]
         assert cmd["action"] == "lock_in"  # warning_before_lock_seconds > 0
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_lock_by_daily_limit(self, settings, db_session, mocker):
         """При превышении дневного лимита блокирует, даже если расписание разрешает."""
         pc = await create_online_pc(db_session, daily_limit=1)  # 60 сек
@@ -102,7 +102,7 @@ class TestProcessPc:
         assert call_args[1]["action"] == "lock_in"
         assert call_args[1]["reason"] == "daily_limit"
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_manual_lock_not_released_by_scheduler(self, settings, db_session, mocker):
         """Ручную блокировку планировщик НЕ снимает, даже если время разрешено."""
         pc = await create_online_pc(db_session)
@@ -121,7 +121,7 @@ class TestProcessPc:
         assert pc.desired_locked is True
         transport_mock.send_pc_command.assert_not_called()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_schedule_lock_released(self, settings, db_session, mocker):
         """Блокировку по расписанию планировщик снимает, когда время разрешено."""
         pc = await create_online_pc(db_session)
@@ -137,7 +137,7 @@ class TestProcessPc:
         cmd = transport_mock.send_pc_command.call_args[0][1]
         assert cmd["action"] == "unlock"
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_offline_pc_skipped(self, settings, db_session, mocker):
         """Оффлайн ПК планировщик не трогает."""
         pc = await create_online_pc(db_session)
@@ -150,7 +150,7 @@ class TestProcessPc:
 
         transport_mock.send_pc_command.assert_not_called()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_heartbeat_timeout_marks_offline(self, settings, db_session, mocker):
         """Если heartbeat давно не приходил, ПК помечается оффлайн."""
         now_utc, local_now = make_now()
@@ -169,7 +169,7 @@ class TestProcessPc:
 class TestDayLimitsAndBonus:
     """Лимиты по дням недели и бонусное время."""
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_lock_by_weekday_limit(self, settings, db_session, mocker):
         """day_limits для текущего дня недели приоритетнее daily_limit_minutes."""
         pc = await create_online_pc(db_session)
@@ -197,7 +197,7 @@ class TestDayLimitsAndBonus:
         assert pc.desired_locked is True
         assert pc.desired_lock_reason == "daily_limit"
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_bonus_extends_limit(self, settings, db_session, mocker):
         """bonus_seconds расширяет лимит — блокировки нет."""
         pc = await create_online_pc(db_session)

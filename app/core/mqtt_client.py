@@ -36,7 +36,7 @@ class MqttService:
         self._last_publish = 0.0
         self._status_task: asyncio.Task | None = None
         self.client = mqtt.Client(
-            callback_api_version=mqtt.CallbackApiVersion.VERSION2,
+            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
             client_id=settings.mqtt_client_id,
             transport=settings.mqtt_transport,
         )

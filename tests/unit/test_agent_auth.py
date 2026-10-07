@@ -34,7 +34,7 @@ class TestAgentToken:
 
 
 class TestGetPcByAgentToken:
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_find_pc_by_token(self, db_session):
         """get_pc_by_agent_token находит ПК по валидному токену."""
         from app.core.agent_auth import get_pc_by_agent_token, hash_agent_token
@@ -52,7 +52,7 @@ class TestGetPcByAgentToken:
         assert found_pc is not None
         assert found_pc.name == "test_pc_token"
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_return_none_for_invalid_token(self, db_session):
         """get_pc_by_agent_token возвращает None для неверного токена."""
         from app.core.agent_auth import get_pc_by_agent_token, hash_agent_token
@@ -68,7 +68,7 @@ class TestGetPcByAgentToken:
         found_pc = await get_pc_by_agent_token(db_session, "wrong_token")
         assert found_pc is None
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_return_none_for_pc_without_token(self, db_session):
         """get_pc_by_agent_token возвращает None для ПК без токена."""
         from app.core.agent_auth import get_pc_by_agent_token

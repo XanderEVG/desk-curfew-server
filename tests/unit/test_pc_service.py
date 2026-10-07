@@ -1,10 +1,10 @@
 """Тесты для бизнес-логики управления ПК."""
 
 from datetime import datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 from freezegun import freeze_time
-from zoneinfo import ZoneInfo
 
 from app.core import pc_service
 from app.core.pc_service import get_end_of_day, is_allowed_now
@@ -97,7 +97,7 @@ class TestGetEndOfDay:
 class TestIsAllowedNow:
     """Тесты для проверки расписания."""
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_no_schedule_allows_all(self, settings, db_session):
         """Если расписания нет, должно быть разрешено всегда."""
         pc_id = 1
@@ -106,7 +106,7 @@ class TestIsAllowedNow:
         allowed = await is_allowed_now(db_session, settings, pc_id, local_now)
         assert allowed is True
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_within_schedule(self, settings, db_session):
         """Время внутри разрешённого окна должно быть разрешено."""
         pc_id = await create_test_pc_with_schedule(
@@ -121,7 +121,7 @@ class TestIsAllowedNow:
         allowed = await is_allowed_now(db_session, settings, pc_id, local_now)
         assert allowed is True
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_outside_schedule(self, settings, db_session):
         """Время вне разрешённого окна должно быть запрещено."""
         pc_id = await create_test_pc_with_schedule(
@@ -136,7 +136,7 @@ class TestIsAllowedNow:
         allowed = await is_allowed_now(db_session, settings, pc_id, local_now)
         assert allowed is False
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_wrong_day(self, settings, db_session):
         """Время в правильном диапазоне, но не тот день недели."""
         pc_id = await create_test_pc_with_schedule(
@@ -151,7 +151,7 @@ class TestIsAllowedNow:
         allowed = await is_allowed_now(db_session, settings, pc_id, local_now)
         assert allowed is False
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_multiple_slots(self, settings, db_session):
         """Несколько слотов расписания должны работать."""
         pc_id = await create_test_pc_with_multiple_slots(
@@ -167,7 +167,7 @@ class TestIsAllowedNow:
         allowed = await is_allowed_now(db_session, settings, pc_id, local_now)
         assert allowed is True
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_inactive_slot_ignored(self, settings, db_session):
         """Неактивные слоты должны игнорироваться."""
         pc_id = await create_test_pc_with_schedule(
@@ -186,7 +186,7 @@ class TestIsAllowedNow:
 class TestHandleHeartbeat:
     """Тесты для обработки heartbeat от агентов."""
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_active_time_increases_when_unlocked(self, settings, db_session, mocker):
         """Когда locked=false и есть ввод, должен расти active_seconds."""
         pc = await create_test_pc(db_session, name="hb_test")
@@ -201,7 +201,7 @@ class TestHandleHeartbeat:
         assert usage.active_seconds == settings.heartbeat_interval  # 30
         assert usage.locked_seconds == 0
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_locked_time_increases_when_locked(self, settings, db_session, mocker):
         """Когда locked=true, должен расти locked_seconds."""
         pc = await create_test_pc(db_session, name="hb_locked_test")
@@ -215,7 +215,7 @@ class TestHandleHeartbeat:
         assert usage.active_seconds == 0
         assert usage.locked_seconds == settings.heartbeat_interval  # 30
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_idle_time_goes_to_idle_seconds(self, settings, db_session, mocker):
         """Без ввода время капает в idle_seconds, лимит не тратится."""
         pc = await create_test_pc(db_session, name="hb_idle_pc")
@@ -230,7 +230,7 @@ class TestHandleHeartbeat:
         assert usage.active_seconds == 0
         assert pc.is_idle is True
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_heartbeat_updates_pc_fields(self, settings, db_session, mocker):
         """Heartbeat должен обновлять is_online, last_seen_at, last_active_user."""
         pc = await create_test_pc(db_session, name="hb_fields_test")
@@ -247,7 +247,7 @@ class TestHandleHeartbeat:
         assert pc.last_seen_at is not None
         assert pc.last_active_user == "kid1"
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_heartbeat_resends_lock_when_desired(self, settings, db_session, mocker):
         """Агент жив, но не заблокирован при desired_locked — немедленный resend."""
         pc = await create_test_pc(db_session, name="hb_resend_pc")
@@ -263,7 +263,7 @@ class TestHandleHeartbeat:
         assert transport_mock.send_pc_command.call_count == 1
         assert transport_mock.send_pc_command.call_args[0][1]["action"] == "lock_now"
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_no_resend_if_command_recent(self, settings, db_session, mocker):
         """Недавняя команда (< 120 с) — resend не шлётся."""
         pc = await create_test_pc(db_session, name="hb_no_resend_pc")
@@ -278,7 +278,7 @@ class TestHandleHeartbeat:
 
         transport_mock.send_pc_command.assert_not_called()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_unknown_pc_does_not_crash(self, settings, db_session, mocker, caplog):
         """Heartbeat от неизвестного ПК должен логировать warning, а не падать."""
         transport_mock = mocker.AsyncMock()
@@ -293,7 +293,7 @@ class TestHandleHeartbeat:
 class TestLockPc:
     """Тесты для формирования команд блокировки."""
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_lock_now_when_no_delay(self, settings, db_session, mocker):
         """Без задержки должна отправляться команда lock_now."""
         pc = await create_test_pc(db_session, name="lock_now_test")
@@ -307,7 +307,7 @@ class TestLockPc:
         assert args[0][1]["action"] == "lock_now"
         assert args[0][1]["reason"] == "manual"
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_lock_in_when_delay_given(self, settings, db_session, mocker):
         """С задержкой должна отправляться команда lock_in."""
         pc = await create_test_pc(db_session, name="lock_in_test")
@@ -327,7 +327,7 @@ class TestLockPc:
         assert args[1]["delay_seconds"] == 300
         assert args[1]["reason"] == "schedule"
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_lock_command_contains_info(self, settings, db_session, mocker):
         """Lock-команда несёт данные для экрана блокировки."""
         pc = await create_test_pc(db_session, name="info_pc")
@@ -342,7 +342,7 @@ class TestLockPc:
         assert cmd["info"]["next_window"] == "до конца дня"
         assert cmd["info"]["unlocks_at"] is not None
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_manual_lock_sets_manual_lock_until(self, settings, db_session, mocker):
         """При ручной блокировке должно установиться manual_lock_until (конец дня)."""
         pc = await create_test_pc(db_session, name="manual_lock_test")
@@ -363,7 +363,7 @@ class TestLockPc:
         # Конец дня должен быть в будущем
         assert pc.manual_lock_until > datetime.now(timezone.utc)
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_schedule_lock_does_not_set_manual_until(self, settings, db_session, mocker):
         """Для блокировки по расписанию manual_lock_until должно быть None."""
         pc = await create_test_pc(db_session, name="schedule_lock_test")
@@ -386,7 +386,7 @@ class TestLockPc:
 class TestUnlockPc:
     """Тесты для разблокировки."""
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_unlock_clears_all_fields(self, settings, db_session, mocker):
         """Разблокировка должна сбросить desired_locked, reason и manual_lock_until."""
         pc = await create_test_pc(db_session, name="unlock_test")
@@ -418,7 +418,7 @@ class TestUnlockPc:
 class TestAddTime:
     """Честная история: бонус отдельно, факт отдельно."""
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_add_time_increases_bonus_not_active(self, settings, db_session, mocker):
         """add_time увеличивает bonus_seconds, не трогая active_seconds."""
         pc = await create_test_pc(db_session, name="bonus_pc")
@@ -438,7 +438,7 @@ class TestAddTime:
         assert usage.bonus_seconds == 1800
         assert usage.active_seconds == 3600  # факт не тронут
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_add_time_does_not_unlock_schedule_lock(self, settings, db_session, mocker):
         """Бонус не снимает блокировку по расписанию."""
         pc = await create_test_pc(db_session, name="bonus_sched_pc")
@@ -455,7 +455,7 @@ class TestAddTime:
         assert transport_mock.send_pc_command.call_count == 1
         assert transport_mock.send_pc_command.call_args[0][1]["action"] == "add_time"
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_add_time_does_not_unlock_manual_lock(self, settings, db_session, mocker):
         """Бонус не снимает ручную блокировку."""
         pc = await create_test_pc(db_session, name="bonus_manual_pc")
@@ -470,7 +470,7 @@ class TestAddTime:
         assert pc.desired_locked is True
         assert transport_mock.send_pc_command.call_count == 1
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_add_time_unlocks_daily_limit_lock(self, settings, db_session, mocker):
         """Бонус снимает блокировку по лимиту, если лимит больше не превышен."""
         pc = await create_test_pc(db_session, name="bonus_limit_pc")
@@ -498,7 +498,7 @@ class TestAddTime:
 class TestServerCommands:
     """Управление сервером через server/cmd."""
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_server_lock_command(self, settings, db_session, mocker):
         pc = await create_test_pc(db_session, name="srv_lock_pc")
         transport_mock = mocker.AsyncMock()
@@ -511,7 +511,7 @@ class TestServerCommands:
         assert transport_mock.send_pc_command.call_count == 1
         assert transport_mock.send_pc_command.call_args[0][1]["action"] == "lock_now"
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_server_unlock_command(self, settings, db_session, mocker):
         pc = await create_test_pc(db_session, name="srv_unlock_pc")
         pc.desired_locked = True
@@ -526,7 +526,7 @@ class TestServerCommands:
         assert pc.desired_locked is False
         assert transport_mock.send_pc_command.call_args[0][1]["action"] == "unlock"
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_server_add_time_command(self, settings, db_session, mocker):
         pc = await create_test_pc(db_session, name="srv_time_pc")
         transport_mock = mocker.AsyncMock()
@@ -545,7 +545,7 @@ class TestServerCommands:
         usage = await pc_service.get_usage_today(db_session, settings, pc.id)
         assert usage.bonus_seconds == 600
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_server_command_unknown_pc(self, settings, db_session, mocker):
         """Неизвестный ПК — warning, без действий и падений."""
         transport_mock = mocker.AsyncMock()
@@ -554,7 +554,7 @@ class TestServerCommands:
 
         transport_mock.send_pc_command.assert_not_called()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_server_command_unknown_action(self, settings, db_session, mocker):
         pc = await create_test_pc(db_session, name="srv_bad_action_pc")
         transport_mock = mocker.AsyncMock()
@@ -569,7 +569,7 @@ class TestServerCommands:
 class TestBuildServerStatus:
     """Статус сервера для внешних приложений."""
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_status_contains_pc_summary(self, settings, db_session):
         pc = await create_test_pc(db_session, name="status_pc")
 

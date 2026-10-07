@@ -83,8 +83,8 @@ async def update_pc(
 async def get_usage(
     pc_name: str,
     days: Annotated[int, Query(ge=1, le=90)] = 7,
-    db: Annotated[AsyncSession, Depends(get_db)] = None,
-):
+    db: Annotated[AsyncSession, Depends(get_db)] = None,  # type: ignore[assignment]
+) -> list[UsageDayRead]:
     """История использования за последние N дней."""
     settings = get_settings()
     pc = await pc_service.get_pc_by_name(db, pc_name)
@@ -98,8 +98,8 @@ async def get_usage(
 async def get_events(
     pc_name: str,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    db: Annotated[AsyncSession, Depends(get_db)] = None,
-):
+    db: Annotated[AsyncSession, Depends(get_db)] = None,  # type: ignore[assignment]
+) -> list[PcEventRead]:
     """Последние события от агента."""
     pc = await pc_service.get_pc_by_name(db, pc_name)
     if pc is None:
@@ -112,8 +112,8 @@ async def get_events(
 async def get_commands(
     pc_name: str,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    db: Annotated[AsyncSession, Depends(get_db)] = None,
-):
+    db: Annotated[AsyncSession, Depends(get_db)] = None,  # type: ignore[assignment]
+) -> list[CommandLogRead]:
     """История команд, отправленных на ПК."""
     pc = await pc_service.get_pc_by_name(db, pc_name)
     if pc is None:
@@ -125,8 +125,8 @@ async def get_commands(
 @router.get("/{pc_name}/schedule", response_model=list[ScheduleSlotRead])
 async def get_schedule(
     pc_name: str,
-    db: Annotated[AsyncSession, Depends(get_db)] = None,
-):
+    db: Annotated[AsyncSession, Depends(get_db)] = None,  # type: ignore[assignment]
+) -> list[ScheduleSlotRead]:
     """Текущее расписание ПК."""
     pc = await pc_service.get_pc_by_name(db, pc_name)
     if pc is None:

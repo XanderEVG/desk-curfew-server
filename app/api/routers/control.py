@@ -19,7 +19,7 @@ async def lock_pc(
     db: Annotated[AsyncSession, Depends(get_db)],
     transport: Annotated[AgentTransport, Depends(get_agent_transport)],
     payload: LockRequest | None = None,
-):
+) -> MessageResponse:
     settings = get_settings()
 
     pc = await pc_service.get_pc_by_name(db, pc_name)
@@ -48,7 +48,7 @@ async def unlock_pc(
     pc_name: str,
     db: Annotated[AsyncSession, Depends(get_db)],
     transport: Annotated[AgentTransport, Depends(get_agent_transport)],
-):
+) -> MessageResponse:
     settings = get_settings()
 
     pc = await pc_service.get_pc_by_name(db, pc_name)
@@ -74,7 +74,7 @@ async def add_time(
     db: Annotated[AsyncSession, Depends(get_db)],
     transport: Annotated[AgentTransport, Depends(get_agent_transport)],
     payload: AddTimeRequest | None = None,
-):
+) -> MessageResponse:
     settings = get_settings()
 
     pc = await pc_service.get_pc_by_name(db, pc_name)

@@ -53,13 +53,13 @@ async def pc_with_token(db_session: AsyncSession) -> PC:
 
 
 class TestAgentHeartbeat:
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_missing_token_returns_401(self, test_client, pc_with_token):
         """Запрос без Authorization header — 401."""
         response = await test_client.post("/api/agent/hb", json={"locked": False})
         assert response.status_code == 401
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_invalid_token_returns_401(self, test_client, pc_with_token):
         """Неверный токен — 401."""
         response = await test_client.post(
@@ -69,7 +69,7 @@ class TestAgentHeartbeat:
         )
         assert response.status_code == 401
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_valid_token_returns_commands(self, test_client, pc_with_token, transport):
         """Валидный токен — 200, команды из очереди."""
         await transport.send_pc_command("agent_test_pc", {"action": "lock_now", "reason": "manual"})
@@ -85,7 +85,7 @@ class TestAgentHeartbeat:
         assert data["commands"][0]["action"] == "lock_now"
         assert "server_time" in data
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_heartbeat_updates_pc_state(self, test_client, pc_with_token, db_session):
         """Heartbeat обновляет is_online, last_seen_at."""
         response = await test_client.post(
@@ -100,7 +100,7 @@ class TestAgentHeartbeat:
         assert pc_with_token.last_seen_at is not None
         assert pc_with_token.last_active_user == "kid1"
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_events_are_stored(self, test_client, pc_with_token, db_session):
         """События из массива events сохраняются в PcEvent."""
         response = await test_client.post(
@@ -127,7 +127,7 @@ class TestAgentHeartbeat:
         assert events[0].event_type == "locked"
         assert events[1].event_type == "pin_attempt"
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_drain_clears_queue(self, test_client, pc_with_token, transport):
         """После drain очередь пуста — следующий hb без новых команд возвращает []."""
         await transport.send_pc_command("agent_test_pc", {"action": "unlock"})
@@ -146,7 +146,7 @@ class TestAgentHeartbeat:
         )
         assert response2.json()["commands"] == []
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_inactive_pc_rejected(self, db_session, test_client, transport):
         """Неактивный ПК (is_active=False) не пропускается по токену."""
         pc = PC(

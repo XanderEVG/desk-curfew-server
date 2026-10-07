@@ -66,7 +66,7 @@ async def test_pc(db_session: AsyncSession) -> PC:
 class TestAuth:
     """Тесты авторизации."""
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_login_success(self, test_client, admin_user):
         """Успешный логин возвращает пользователя и устанавливает cookie."""
         response = await test_client.post(
@@ -82,7 +82,7 @@ class TestAuth:
         # Проверяем, что cookie установлен
         assert "curfew_session" in response.cookies
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_login_wrong_password(self, test_client, admin_user):
         """Неправильный пароль возвращает 401."""
         response = await test_client.post(
@@ -93,7 +93,7 @@ class TestAuth:
         assert response.status_code == 401
         assert "curfew_session" not in response.cookies
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_login_nonexistent_user(self, test_client):
         """Логин несуществующего пользователя возвращает 401."""
         response = await test_client.post(
@@ -103,7 +103,7 @@ class TestAuth:
 
         assert response.status_code == 401
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_me_with_valid_session(self, test_client, admin_user):
         """GET /auth/me с валидной сессией возвращает пользователя."""
         # Логинимся
@@ -119,13 +119,13 @@ class TestAuth:
         assert me_response.status_code == 200
         assert me_response.json()["username"] == "admin"
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_me_without_session(self, test_client):
         """GET /auth/me без сессии возвращает 401."""
         response = await test_client.get("/auth/me")
         assert response.status_code == 401
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_logout_clears_session(self, test_client, admin_user):
         """Logout удаляет сессию и cookie."""
         # Логинимся
@@ -146,13 +146,13 @@ class TestAuth:
 class TestPcsApi:
     """Тесты API для ПК."""
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_list_pcs_requires_auth(self, test_client, test_pc):
         """GET /api/pcs без авторизации возвращает 401."""
         response = await test_client.get("/api/pcs")
         assert response.status_code == 401
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_list_pcs_with_auth(self, test_client, admin_user, test_pc):
         """GET /api/pcs с авторизацией возвращает список ПК."""
         # Логинимся
@@ -168,7 +168,7 @@ class TestPcsApi:
         assert len(data) >= 1
         assert any(pc["name"] == "test_pc" for pc in data)
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_get_pc_with_auth(self, test_client, admin_user, test_pc):
         """GET /api/pcs/{name} возвращает конкретный ПК."""
         await test_client.post(
@@ -183,7 +183,7 @@ class TestPcsApi:
         assert data["name"] == "test_pc"
         assert "usage_today" in data
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_get_nonexistent_pc(self, test_client, admin_user):
         """GET /api/pcs/{name} для несуществующего ПК возвращает 404."""
         await test_client.post(
@@ -198,7 +198,7 @@ class TestPcsApi:
 class TestControlApi:
     """Тесты API для управления ПК."""
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_lock_pc(self, test_client, admin_user, test_pc, mocker):
         """POST /api/pcs/{name}/lock отправляет команду."""
         # Мокаем транспорт
@@ -222,7 +222,7 @@ class TestControlApi:
         # Проверяем, что команда отправлена
         transport_mock.send_pc_command.assert_called_once()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_unlock_pc(self, test_client, admin_user, test_pc, mocker):
         """POST /api/pcs/{name}/unlock отправляет команду разблокировки."""
         from app.deps import get_agent_transport
@@ -246,7 +246,7 @@ class TestControlApi:
 class TestScheduleApi:
     """Тесты API для расписания."""
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_get_schedule(self, test_client, admin_user, test_pc, db_session):
         """GET /api/pcs/{name}/schedule возвращает расписание."""
         # Добавляем слот
@@ -272,7 +272,7 @@ class TestScheduleApi:
         assert len(data) == 1
         assert data[0]["days"] == ["mon", "tue", "wed"]
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_update_schedule(self, test_client, admin_user, test_pc):
         """PUT /api/pcs/{name}/schedule заменяет расписание."""
         await test_client.post(

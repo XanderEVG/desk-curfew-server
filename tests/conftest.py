@@ -13,7 +13,7 @@ from app.database import Base
 TEST_DATABASE_URL = "postgresql+asyncpg://test:test@localhost:5433/test"
 
 
-@pytest.fixture()
+@pytest.fixture
 def settings():
     """Создаёт тестовые настройки."""
     return Settings(

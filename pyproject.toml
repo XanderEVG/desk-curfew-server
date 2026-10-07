@@ -21,7 +21,11 @@ warn_unused_configs = true
 disallow_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["alembic.*", "alembic.versions.*"]
+module = [
+    "alembic.env",
+    "alembic.versions.*",
+    "tests.*",
+]
 ignore_errors = true
 
 [tool.pytest.ini_options]

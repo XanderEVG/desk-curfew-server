@@ -13,6 +13,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import Settings
 from app.core import pc_service
 from app.core.agent_auth import get_pc_by_agent_token
 from app.core.agent_transport import AgentTransport
@@ -80,7 +81,7 @@ async def agent_heartbeat(
     )
 
 
-def _get_settings():
+def _get_settings() -> Settings:
     from app.config import get_settings
 
     return get_settings()

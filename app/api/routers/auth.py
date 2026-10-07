@@ -38,7 +38,7 @@ async def login(
     session = await create_session(
         db,
         user,
-        ip_address=request.client.host,
+        ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
 

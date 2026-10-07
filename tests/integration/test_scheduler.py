@@ -2,11 +2,11 @@
 
 from datetime import datetime, time, timedelta, timezone
 from unittest.mock import AsyncMock
+from zoneinfo import ZoneInfo
 
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
-from zoneinfo import ZoneInfo
 
 from app.config import Settings
 from app.core.agent_transport import AgentTransport
@@ -43,13 +43,13 @@ async def test_pc(db_session: AsyncSession, now_utc: datetime) -> PC:
     return pc
 
 
-@pytest.fixture()
+@pytest.fixture
 def now_utc() -> datetime:
     """Текущее время UTC."""
     return datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)  # Понедельник
 
 
-@pytest.fixture()
+@pytest.fixture
 def local_now(settings: Settings, now_utc: datetime) -> datetime:
     """Локальное время."""
     return now_utc.astimezone(ZoneInfo(settings.server_timezone))
@@ -58,7 +58,7 @@ def local_now(settings: Settings, now_utc: datetime) -> datetime:
 class TestOfflineDetection:
     """Тесты определения оффлайн-статуса."""
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_pc_offline_by_heartbeat_timeout(
         self, db_session, settings, transport_mock, test_pc, now_utc, local_now
     ):
@@ -74,7 +74,7 @@ class TestOfflineDetection:
         assert test_pc.is_online is False
         transport_mock.send_pc_command.assert_not_called()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_pc_online_with_recent_heartbeat(
         self, db_session, settings, transport_mock, test_pc, now_utc, local_now
     ):
@@ -89,7 +89,7 @@ class TestOfflineDetection:
 
         assert test_pc.is_online is True
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_skip_offline_pc(self, db_session, settings, transport_mock, test_pc, now_utc, local_now):
         """Оффлайн ПК пропускается — никаких команд."""
         test_pc.is_online = False
@@ -103,7 +103,7 @@ class TestOfflineDetection:
 class TestDailyLimit:
     """Тесты дневного лимита."""
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_lock_by_daily_limit(self, db_session, settings, transport_mock, test_pc, now_utc, local_now):
         """Блокировка при превышении дневного лимита."""
         test_pc.daily_limit_minutes = 60  # 60 минут
@@ -130,7 +130,7 @@ class TestDailyLimit:
         assert call_args[1]["action"] == "lock_in"
         assert call_args[1]["reason"] == "daily_limit"
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_no_lock_under_daily_limit(self, db_session, settings, transport_mock, test_pc, now_utc, local_now):
         """Нет блокировки, если лимит не превышен."""
         test_pc.daily_limit_minutes = 120
@@ -154,7 +154,7 @@ class TestDailyLimit:
 class TestSchedule:
     """Тесты расписания."""
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_lock_outside_schedule(self, db_session, settings, transport_mock, test_pc, now_utc, local_now):
         """Блокировка вне расписания."""
         test_pc.desired_locked = False
@@ -178,7 +178,7 @@ class TestSchedule:
         assert test_pc.desired_locked is True
         assert test_pc.desired_lock_reason == "schedule"
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_no_lock_within_schedule(self, db_session, settings, transport_mock, test_pc, now_utc, local_now):
         """Нет блокировки в рамках расписания."""
         test_pc.desired_locked = False
@@ -202,7 +202,7 @@ class TestSchedule:
 class TestUnlock:
     """Тесты разблокировки."""
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_unlock_when_schedule_allows(self, db_session, settings, transport_mock, test_pc, now_utc, local_now):
         """Разблокировка, когда расписание разрешает."""
         test_pc.desired_locked = True
@@ -230,7 +230,7 @@ class TestUnlock:
         call_args = transport_mock.send_pc_command.call_args[0]
         assert call_args[1]["action"] == "unlock"
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_no_unlock_for_manual_lock(self, db_session, settings, transport_mock, test_pc, now_utc, local_now):
         """Нет автоматической разблокировки ручной блокировки."""
         test_pc.desired_locked = True
@@ -247,7 +247,7 @@ class TestUnlock:
 class TestManualLockExpiry:
     """Тесты истечения ручной блокировки."""
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_manual_lock_expired(self, db_session, settings, transport_mock, test_pc, now_utc, local_now):
         """Ручная блокировка снимается по истечении."""
         test_pc.desired_locked = True
@@ -270,7 +270,7 @@ class TestManualLockExpiry:
 class TestResendLock:
     """Тесты повторной отправки команды блокировки."""
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_resend_lock_if_not_locked_by_agent(
         self, db_session, settings, transport_mock, test_pc, now_utc, local_now
     ):
@@ -298,7 +298,7 @@ class TestResendLock:
         call_args = transport_mock.send_pc_command.call_args[0]
         assert call_args[1]["action"] == "lock_now"  # Без задержки
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_no_resend_if_recent_command(self, db_session, settings, transport_mock, test_pc, now_utc, local_now):
         """Нет повторной отправки, если команда была недавно."""
         test_pc.last_seen_at = now_utc - timedelta(seconds=30)
@@ -326,7 +326,7 @@ class TestResendLock:
 class TestTickWithSession:
     """Тесты tick_with_session."""
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_tick_processes_all_active_pcs(self, db_session, settings, transport_mock, now_utc):
         """tick_with_session обрабатывает все активные ПК."""
         pc1 = PC(name="pc1", display_name="PC 1", is_active=True, is_online=True, last_seen_at=now_utc)
@@ -341,7 +341,7 @@ class TestTickWithSession:
 
         transport_mock.send_pc_command.assert_not_called()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_tick_skips_offline_pcs(self, db_session, settings, transport_mock, now_utc):
         """tick_with_session пропускает оффлайн ПК."""
         pc_offline = PC(
