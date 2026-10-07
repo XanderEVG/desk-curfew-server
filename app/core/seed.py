@@ -33,8 +33,10 @@ async def seed_pcs(session: AsyncSession) -> None:
                 raw_token = generate_agent_token()
                 existing.agent_token_hash = hash_agent_token(raw_token)
                 logger.info("Generated agent token for existing PC %s: %s", name, raw_token)
+                print(f"Generated agent token for existing PC {name}:  {raw_token}")
             else:
                 logger.info("PC %s already exists, skipping", name)
+                print(f"PC {name} already exists, skipping")
             continue
 
         pc = PC(

@@ -93,6 +93,16 @@ async def handle_heartbeat(
         return
 
     now = datetime.now(UTC)
+
+    # Вычисляем реальный интервал между hb (не константу)
+    if pc.last_seen_at is not None:
+        interval_seconds = int((now - pc.last_seen_at).total_seconds())
+        # Ограничиваем интервал разумными пределами (от 1 до 300 секунд)
+        interval_seconds = max(1, min(interval_seconds, 300))
+    else:
+        # Первый hb — используем дефолтный интервал
+        interval_seconds = settings.heartbeat_interval
+
     pc.is_online = True
     pc.last_seen_at = now
     active_user = payload.get("active_user")
@@ -109,11 +119,11 @@ async def handle_heartbeat(
 
     usage = await get_or_create_usage_today(session, settings, pc.id)
     if locked:
-        usage.locked_seconds += settings.heartbeat_interval
+        usage.locked_seconds += interval_seconds
     elif pc.is_idle:
-        usage.idle_seconds += settings.heartbeat_interval
+        usage.idle_seconds += interval_seconds
     else:
-        usage.active_seconds += settings.heartbeat_interval
+        usage.active_seconds += interval_seconds
 
     # Агент жив, но не заблокирован, хотя сервер хочет блокировку —
     # повторяем команду сразу (троттлинг 120 с, как в планировщике).
